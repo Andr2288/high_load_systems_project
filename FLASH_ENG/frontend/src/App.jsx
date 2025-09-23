@@ -1,4 +1,4 @@
-import {Routes, Route, Navigate} from "react-router-dom";
+import {Routes, Route, Navigate, useLocation} from "react-router-dom";
 
 import Navbar from "./components/Navbar.jsx";
 
@@ -7,6 +7,7 @@ import SignUpPage from "./pages/SignUpPage.jsx";
 import LoginPage from "./pages/LoginPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
+import LandingPage from "./pages/LandingPage.jsx";
 
 import {useAuthStore} from "./store/useAuthStore.js";
 import {useEffect} from "react";
@@ -16,6 +17,7 @@ import {Loader} from "lucide-react";
 const App = () => {
 
     const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
+    const location = useLocation();
 
     useEffect(() => {
         checkAuth();
@@ -34,10 +36,11 @@ const App = () => {
     return (
         <div>
 
-            <Navbar />
+            {location.pathname !== "/" && <Navbar />}
 
             <Routes>
-                <Route path="/" element={ authUser ? <HomePage /> : <Navigate to="/login" /> } />
+                <Route path="/" element={ <LandingPage/> } />
+                <Route path="/home" element={ authUser ? <HomePage /> : <Navigate to="/login" /> } />
                 <Route path="/signup" element={ !authUser ? <SignUpPage /> : <Navigate to="/" /> } />
                 <Route path="/login" element={ !authUser ? <LoginPage /> : <Navigate to="/" /> } />
                 <Route path="/settings" element={<SettingsPage />} />
