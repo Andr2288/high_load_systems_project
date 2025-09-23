@@ -1,1 +1,0 @@
-# high_load_systems_project
