@@ -39,7 +39,7 @@ const SettingsPage = () => {
                             <select
                                 value={settings.languageLevel}
                                 onChange={(e) => setSettings({ ...settings, languageLevel: e.target.value })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                             >
                                 <option value="beginner">Beginner (A1-A2)</option>
                                 <option value="intermediate">Intermediate (B1-B2)</option>
@@ -55,7 +55,7 @@ const SettingsPage = () => {
                             <select
                                 value={settings.aiModel}
                                 onChange={(e) => setSettings({ ...settings, aiModel: e.target.value })}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                             >
                                 <option value="gpt-3.5">GPT-3.5</option>
                                 <option value="gpt-4">GPT-4</option>
@@ -74,7 +74,7 @@ const SettingsPage = () => {
                             </div>
                             <button
                                 onClick={() => setSettings({ ...settings, voiceEnabled: !settings.voiceEnabled })}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
                                     settings.voiceEnabled ? 'bg-blue-600' : 'bg-gray-300'
                                 }`}
                             >
@@ -98,7 +98,7 @@ const SettingsPage = () => {
                             </div>
                             <button
                                 onClick={() => setSettings({ ...settings, notificationsEnabled: !settings.notificationsEnabled })}
-                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors cursor-pointer ${
                                     settings.notificationsEnabled ? 'bg-blue-600' : 'bg-gray-300'
                                 }`}
                             >
@@ -137,7 +137,7 @@ const SettingsPage = () => {
                 <div className="flex justify-end">
                     <button
                         onClick={handleSave}
-                        className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors"
+                        className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-colors cursor-pointer"
                     >
                         Save Settings
                     </button>

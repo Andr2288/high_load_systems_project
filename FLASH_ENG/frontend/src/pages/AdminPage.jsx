@@ -184,7 +184,7 @@ const AdminPage = () => {
 
                         <button
                             onClick={() => setShowCreateModal(true)}
-                            className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                            className="flex items-center space-x-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors cursor-pointer"
                         >
                             <UserPlus className="w-5 h-5" />
                             <span>Create User</span>
@@ -304,7 +304,7 @@ const AdminPage = () => {
                                             <button
                                                 onClick={() => handleToggleUserStatus(user._id, user.is_active)}
                                                 disabled={togglingUserIds.has(user._id) || user._id === authUser._id}
-                                                className={`w-24 px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                                                className={`w-24 px-3 py-1 text-xs font-semibold rounded-lg transition-colors cursor-pointer ${
                                                     user.is_active
                                                         ? 'bg-red-100 text-red-800 hover:bg-red-200'
                                                         : 'bg-green-100 text-green-800 hover:bg-green-200'
@@ -322,7 +322,7 @@ const AdminPage = () => {
                                             <button
                                                 onClick={() => openDeleteModal(user)}
                                                 disabled={user._id === authUser._id}
-                                                className="w-20 px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                                                className="w-20 px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1 cursor-pointer"
                                                 title="Delete user"
                                             >
                                                 <Trash2 className="w-3 h-3" />
@@ -341,7 +341,7 @@ const AdminPage = () => {
             {/* Create User Modal */}
             {showCreateModal && (
                 <div
-                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                     onClick={(e) => {
                         // Close modal only if clicking on backdrop
                         if (e.target === e.currentTarget && !isCreating) {
@@ -447,7 +447,7 @@ const AdminPage = () => {
             {/* Delete Confirmation Modal */}
             {showDeleteModal && userToDelete && (
                 <div
-                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                     onClick={(e) => {
                         if (e.target === e.currentTarget && !isDeleting) {
                             setShowDeleteModal(false);
@@ -486,14 +486,14 @@ const AdminPage = () => {
                                     setUserToDelete(null);
                                 }}
                                 disabled={isDeleting}
-                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                             >
                                 Cancel
                             </button>
                             <button
                                 onClick={handleDeleteUser}
                                 disabled={isDeleting}
-                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg transition-colors flex items-center justify-center disabled:cursor-not-allowed"
+                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg transition-colors flex items-center justify-center disabled:cursor-not-allowed cursor-pointer"
                             >
                                 {isDeleting ? (
                                     <>

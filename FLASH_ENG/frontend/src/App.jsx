@@ -36,51 +36,57 @@ const App = () => {
         <div className="min-h-screen bg-gray-50">
             <Toaster position="top-center" />
 
-            {location.pathname !== "/" && authUser && <Navbar />}
+            {location.pathname !== "/" && location.pathname !== "/signup" && location.pathname !== "/login" && authUser && <Navbar />}
 
-            <Routes>
-                {/* Public Routes */}
-                <Route path="/" element={<LandingPage />} />
-                <Route
-                    path="/signup"
-                    element={!authUser ? <SignUpPage /> : <Navigate to="/home" />}
-                />
-                <Route
-                    path="/login"
-                    element={!authUser ? <LoginPage /> : <Navigate to="/home" />}
-                />
+            <div className={`${
+                location.pathname !== "/" && location.pathname !== "/signup" && location.pathname !== "/login" && authUser
+                    ? "ml-64"
+                    : ""
+            }`}>
+                <Routes>
+                    {/* Public Routes */}
+                    <Route path="/" element={<LandingPage />} />
+                    <Route
+                        path="/signup"
+                        element={!authUser ? <SignUpPage /> : <Navigate to="/home" />}
+                    />
+                    <Route
+                        path="/login"
+                        element={!authUser ? <LoginPage /> : <Navigate to="/home" />}
+                    />
 
-                {/* Protected Routes */}
-                <Route
-                    path="/home"
-                    element={
-                        authUser
-                            ? (authUser.role === 'admin' ? <AdminPage /> : <HomePage />)
-                            : <Navigate to="/login" />
-                    }
-                />
-                <Route
-                    path="/profile"
-                    element={authUser ? <ProfilePage /> : <Navigate to="/login" />}
-                />
-                <Route
-                    path="/settings"
-                    element={authUser ? <SettingsPage /> : <Navigate to="/login" />}
-                />
+                    {/* Protected Routes */}
+                    <Route
+                        path="/home"
+                        element={
+                            authUser
+                                ? (authUser.role === 'admin' ? <AdminPage /> : <HomePage />)
+                                : <Navigate to="/login" />
+                        }
+                    />
+                    <Route
+                        path="/profile"
+                        element={authUser ? <ProfilePage /> : <Navigate to="/login" />}
+                    />
+                    <Route
+                        path="/settings"
+                        element={authUser ? <SettingsPage /> : <Navigate to="/login" />}
+                    />
 
-                {/* Admin Only Routes */}
-                <Route
-                    path="/admin"
-                    element={
-                        authUser && authUser.role === 'admin'
-                            ? <AdminPage />
-                            : <Navigate to="/home" />
-                    }
-                />
+                    {/* Admin Only Routes */}
+                    <Route
+                        path="/admin"
+                        element={
+                            authUser && authUser.role === 'admin'
+                                ? <AdminPage />
+                                : <Navigate to="/home" />
+                        }
+                    />
 
-                {/* Fallback */}
-                <Route path="*" element={<Navigate to="/" />} />
-            </Routes>
+                    {/* Fallback */}
+                    <Route path="*" element={<Navigate to="/" />} />
+                </Routes>
+            </div>
         </div>
     );
 };
