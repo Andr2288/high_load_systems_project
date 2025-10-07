@@ -2,7 +2,7 @@
 <module type="WEB_MODULE" version="4">
   <component name="FacetManager">
     <facet type="Python" name="Python facet">
-      <configuration sdkName="Python 3.10 (high_load_systems_project)" />
+      <configuration sdkName="Python 3.13 virtualenv at C:\Users\chorn\Desktop\SE-2025\Високонавантажені системи\LAB_1\high_load_systems_project\FLASH_ENG\backend\venv (2)" />
     </facet>
   </component>
   <component name="NewModuleRootManager">
@@ -15,6 +15,6 @@
     </content>
     <orderEntry type="inheritedJdk" />
     <orderEntry type="sourceFolder" forTests="false" />
-    <orderEntry type="library" name="Python 3.10 (high_load_systems_project) interpreter library" level="application" />
+    <orderEntry type="library" name="Python 3.13 virtualenv at C:\Users\chorn\Desktop\SE-2025\Високонавантажені системи\LAB_1\high_load_systems_project\FLASH_ENG\backend\venv (2) interpreter library" level="application" />
   </component>
 </module>
