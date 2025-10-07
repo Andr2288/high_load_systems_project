@@ -48,7 +48,7 @@ const LandingPage = () => {
             </nav>
 
             {/* Hero Section */}
-            <section className="min-h-screen flex items-center justify-center relative overflow-hidden pt-30">
+            <section className="min-h-screen flex items-center justify-center relative overflow-hidden pt-40">
                 <div className="absolute inset-0 bg-gradient-to-r from-blue-900/20 via-purple-900/20 to-green-900/20"></div>
 
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
@@ -149,95 +149,68 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Benefits Section */}
-            <section id="benefits" className="py-16 bg-gray-900">
+            {/* Benefits Section - НОВИЙ ПРОСТИЙ ДИЗАЙН */}
+            <section id="benefits" className="py-20 bg-gray-900">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="text-center mb-20">
-                        <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-green-400 to-blue-500 bg-clip-text text-transparent">
-                Чому обирають FlashEng?
-              </span>
+                    <div className="text-center mb-16">
+                        <h2 className="text-4xl md:text-5xl font-bold mb-6 text-white">
+                            Чому обирають FlashEng?
                         </h2>
+                        <p className="text-xl text-gray-400">
+                            Простий та ефективний спосіб вивчення англійської
+                        </p>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
-                        <div className="space-y-8">
-                            {[
-                                {
-                                    title: "Швидке засвоєння",
-                                    description: "Наукові методи spaced repetition допомагають запам'ятати слова назавжди",
-                                    color: "bg-green-500"
-                                },
-                                {
-                                    title: "Адаптивність",
-                                    description: "Система підлаштовується під ваш темп навчання та рівень знань",
-                                    color: "bg-blue-500"
-                                },
-                                {
-                                    title: "Мотивація",
-                                    description: "Ігрові елементи та досягнення роблять навчання захоплюючим",
-                                    color: "bg-purple-500"
-                                }
-                            ].map((benefit, index) => (
-                                <div key={index} className="flex items-start space-x-4">
-                                    <div className={`flex-shrink-0 w-12 h-12 ${benefit.color} rounded-xl flex items-center justify-center`}>
-                                        <CheckCircle className="w-6 h-6 text-white" />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-2xl font-bold mb-2">{benefit.title}</h3>
-                                        <p className="text-gray-300">{benefit.description}</p>
-                                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                        {[
+                            {
+                                title: "Швидке засвоєння",
+                                description: "Наукові методи spaced repetition допомагають запам'ятати слова назавжди"
+                            },
+                            {
+                                title: "Адаптивність",
+                                description: "Система підлаштовується під ваш темп навчання та рівень знань"
+                            },
+                            {
+                                title: "Мотивація",
+                                description: "Ігрові елементи та досягнення роблять навчання захоплюючим"
+                            }
+                        ].map((benefit, index) => (
+                            <div
+                                key={index}
+                                className="bg-gray-800/50 rounded-2xl p-8 border border-gray-700 hover:border-gray-600 transition-all duration-300"
+                            >
+                                <div className="flex items-center justify-center w-12 h-12 bg-blue-500/20 rounded-xl mb-6">
+                                    <CheckCircle className="w-6 h-6 text-blue-400" />
                                 </div>
-                            ))}
-                        </div>
-
-                        <div className="relative">
-                            <div className="bg-gray-800/50 backdrop-blur-sm rounded-3xl p-8 border border-gray-700 hover:border-blue-500 transition-all duration-300">
-                                <div className="bg-gradient-to-br from-blue-500 to-purple-600 rounded-2xl p-6 text-center">
-                                    <h4 className="text-2xl font-bold mb-4">Результати за місяць:</h4>
-                                    <div className="space-y-4">
-                                        <div className="flex justify-between">
-                                            <span>Нових слів:</span>
-                                            <span className="font-bold">500+</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>Точність:</span>
-                                            <span className="font-bold">92%</span>
-                                        </div>
-                                        <div className="flex justify-between">
-                                            <span>Час навчання:</span>
-                                            <span className="font-bold">15 хв/день</span>
-                                        </div>
-                                    </div>
-                                </div>
+                                <h3 className="text-2xl font-bold mb-4 text-white">{benefit.title}</h3>
+                                <p className="text-gray-400 leading-relaxed">{benefit.description}</p>
                             </div>
-                        </div>
+                        ))}
                     </div>
                 </div>
             </section>
 
-            {/* CTA Section */}
-            <section className="py-30 bg-gradient-to-r from-blue-600 via-purple-600 to-green-600">
+            {/* CTA Section - НОВИЙ ПРОСТИЙ ДИЗАЙН */}
+            <section className="py-20 bg-gray-800">
                 <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
-                    <h2 className="text-4xl md:text-5xl font-bold mb-6">
-                        Готові почати свою подорож до вільного володіння англійською?
+                    <h2 className="text-4xl md:text-5xl font-bold mb-6 text-white">
+                        Готові почати вивчення англійської?
                     </h2>
-                    <p className="text-xl mb-8 opacity-90">
-                        Приєднуйтесь до тисяч користувачів, які вже досягли успіху з FlashEng
+                    <p className="text-xl mb-10 text-gray-400">
+                        Приєднуйтесь до тисяч користувачів, які вже досягли успіху
                     </p>
-                    <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                        <a
-                            href="/signup"
-                            className="px-8 py-4 bg-white text-blue-600 rounded-full text-lg font-semibold hover:bg-gray-100 transition-all duration-300 hover:scale-105 hover:shadow-2xl"
-                        >
-                            Розпочати безкоштовно
-                        </a>
-                    </div>
+                    <a
+                        href="/signup"
+                        className="inline-block px-10 py-4 bg-blue-600 hover:bg-blue-700 text-white rounded-full text-lg font-semibold transition-all duration-300 hover:scale-105 shadow-lg"
+                    >
+                        Розпочати безкоштовно
+                    </a>
                 </div>
             </section>
 
             {/* Footer */}
-            <footer className="bg-gray-800 py-16">
+            <footer className="bg-gray-900 pt-16 pb-8 border-t border-gray-800">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
                         {/* Links */}
@@ -265,7 +238,7 @@ const LandingPage = () => {
                         </div>
                     </div>
 
-                    <div className="border-t border-gray-700 mt-12 pt-6 text-center text-gray-500 text-sm">
+                    <div className="border-t border-gray-800 mt-6 pt-6 text-center text-gray-500 text-sm">
                         &copy; 2025 FlashEng. Всі права захищено.
                     </div>
                 </div>
