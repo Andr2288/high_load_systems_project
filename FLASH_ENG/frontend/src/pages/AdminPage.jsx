@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore.js";
 import { axiosInstance } from "../lib/axios.js";
-import { Users, UserPlus, Shield } from "lucide-react";
+import { Users, UserPlus, Shield, Trash2 } from "lucide-react";
 import toast from "react-hot-toast";
 
 const AdminPage = () => {
@@ -9,7 +9,11 @@ const AdminPage = () => {
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [showCreateModal, setShowCreateModal] = useState(false);
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [userToDelete, setUserToDelete] = useState(null);
     const [isCreating, setIsCreating] = useState(false);
+    const [togglingUserIds, setTogglingUserIds] = useState(new Set());
+    const [isDeleting, setIsDeleting] = useState(false);
     const [newUser, setNewUser] = useState({
         fullName: "",
         email: "",
@@ -58,6 +62,7 @@ const AdminPage = () => {
             const createdUser = response.data.user;
             setUsers(prevUsers => [...prevUsers, {
                 ...createdUser,
+                is_active: true,
                 created_at: new Date().toISOString()
             }]);
 
@@ -73,6 +78,85 @@ const AdminPage = () => {
         } finally {
             setIsCreating(false);
         }
+    };
+
+    const handleToggleUserStatus = async (userId, currentStatus) => {
+        // Don't allow admin to deactivate themselves
+        if (userId === authUser._id) {
+            toast.error("You cannot deactivate your own account!");
+            return;
+        }
+
+        // Add userId to set of toggling users
+        setTogglingUserIds(prev => new Set(prev).add(userId));
+
+        try {
+            const token = localStorage.getItem('token');
+            await axiosInstance.put(`/admin/users/${userId}/toggle-status`, {}, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            // Update user status in list
+            setUsers(prevUsers => prevUsers.map(user =>
+                user._id === userId
+                    ? { ...user, is_active: !currentStatus }
+                    : user
+            ));
+
+            toast.success(`User ${!currentStatus ? 'activated' : 'deactivated'} successfully!`);
+
+        } catch (error) {
+            const errorMessage = error.response?.data?.error || "Failed to update user status";
+            toast.error(errorMessage);
+        } finally {
+            // Remove userId from set of toggling users
+            setTogglingUserIds(prev => {
+                const newSet = new Set(prev);
+                newSet.delete(userId);
+                return newSet;
+            });
+        }
+    };
+
+    const handleDeleteUser = async () => {
+        if (!userToDelete) return;
+
+        setIsDeleting(true);
+
+        try {
+            const token = localStorage.getItem('token');
+            await axiosInstance.delete(`/admin/users/${userToDelete._id}`, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            // Remove user from list
+            setUsers(prevUsers => prevUsers.filter(user => user._id !== userToDelete._id));
+
+            toast.success("User deleted successfully!");
+            setShowDeleteModal(false);
+            setUserToDelete(null);
+
+        } catch (error) {
+            const errorMessage = error.response?.data?.error || "Failed to delete user";
+            toast.error(errorMessage);
+        } finally {
+            setIsDeleting(false);
+        }
+    };
+
+    const openDeleteModal = (user) => {
+        // Don't allow admin to delete themselves
+        if (user._id === authUser._id) {
+            toast.error("You cannot delete your own account!");
+            return;
+        }
+
+        setUserToDelete(user);
+        setShowDeleteModal(true);
     };
 
     if (loading) {
@@ -176,6 +260,9 @@ const AdminPage = () => {
                                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                                     Created
                                 </th>
+                                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                                    Actions
+                                </th>
                             </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
@@ -212,6 +299,37 @@ const AdminPage = () => {
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                                         {new Date(user.created_at).toLocaleDateString()}
                                     </td>
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        <div className="flex space-x-2">
+                                            <button
+                                                onClick={() => handleToggleUserStatus(user._id, user.is_active)}
+                                                disabled={togglingUserIds.has(user._id) || user._id === authUser._id}
+                                                className={`w-24 px-3 py-1 text-xs font-semibold rounded-lg transition-colors ${
+                                                    user.is_active
+                                                        ? 'bg-red-100 text-red-800 hover:bg-red-200'
+                                                        : 'bg-green-100 text-green-800 hover:bg-green-200'
+                                                } disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
+                                            >
+                                                {togglingUserIds.has(user._id) ? (
+                                                    <span className="flex items-center">
+                                                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                                                        </span>
+                                                ) : (
+                                                    user.is_active ? 'Deactivate' : 'Activate'
+                                                )}
+                                            </button>
+
+                                            <button
+                                                onClick={() => openDeleteModal(user)}
+                                                disabled={user._id === authUser._id}
+                                                className="w-20 px-3 py-1 text-xs font-semibold bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-1"
+                                                title="Delete user"
+                                            >
+                                                <Trash2 className="w-3 h-3" />
+                                                <span>Delete</span>
+                                            </button>
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                             </tbody>
@@ -223,7 +341,7 @@ const AdminPage = () => {
             {/* Create User Modal */}
             {showCreateModal && (
                 <div
-                    className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
                     onClick={(e) => {
                         // Close modal only if clicking on backdrop
                         if (e.target === e.currentTarget && !isCreating) {
@@ -322,6 +440,74 @@ const AdminPage = () => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Delete Confirmation Modal */}
+            {showDeleteModal && userToDelete && (
+                <div
+                    className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50"
+                    onClick={(e) => {
+                        if (e.target === e.currentTarget && !isDeleting) {
+                            setShowDeleteModal(false);
+                            setUserToDelete(null);
+                        }
+                    }}
+                >
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-center w-16 h-16 bg-red-100 rounded-full mx-auto mb-4">
+                            <Trash2 className="w-8 h-8 text-red-600" />
+                        </div>
+
+                        <h2 className="text-2xl font-bold text-gray-900 mb-4 text-center">Delete User</h2>
+
+                        <p className="text-gray-600 mb-2 text-center">
+                            Are you sure you want to delete this user?
+                        </p>
+
+                        <div className="bg-gray-50 rounded-lg p-4 mb-6">
+                            <p className="text-sm text-gray-600 mb-1">Name:</p>
+                            <p className="font-semibold text-gray-900 mb-3">{userToDelete.full_name}</p>
+
+                            <p className="text-sm text-gray-600 mb-1">Email:</p>
+                            <p className="font-semibold text-gray-900">{userToDelete.email}</p>
+                        </div>
+
+                        <p className="text-red-600 text-sm text-center mb-6 font-medium">
+                            ⚠️ This action cannot be undone!
+                        </p>
+
+                        <div className="flex space-x-4">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowDeleteModal(false);
+                                    setUserToDelete(null);
+                                }}
+                                disabled={isDeleting}
+                                className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleDeleteUser}
+                                disabled={isDeleting}
+                                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg transition-colors flex items-center justify-center disabled:cursor-not-allowed"
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Delete
+                                    </>
+                                )}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

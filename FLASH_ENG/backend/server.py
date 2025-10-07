@@ -6,6 +6,7 @@ from models import User
 from auth_utils import create_access_token, verify_token, get_user_from_token
 from bson import ObjectId
 import re
+from datetime import datetime
 
 
 class FlashEngHandler(BaseHTTPRequestHandler):
@@ -91,6 +92,30 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
 
+    def do_PUT(self):
+        """Handle PUT requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+
+        # Admin: Toggle user status
+        if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
+            self.handle_admin_toggle_user_status(path)
+
+        else:
+            self._send_response(404, {'error': 'Endpoint not found'})
+
+    def do_DELETE(self):
+        """Handle DELETE requests"""
+        parsed_path = urlparse(self.path)
+        path = parsed_path.path
+
+        # Admin: Delete user
+        if path.startswith('/api/admin/users/'):
+            self.handle_admin_delete_user(path)
+
+        else:
+            self._send_response(404, {'error': 'Endpoint not found'})
+
     def handle_signup(self):
         """Handle user registration"""
         try:
@@ -164,6 +189,11 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             if not user_doc:
                 self._send_response(401, {'error': 'Invalid credentials'})
+                return
+
+            # Check if user is active
+            if not user_doc.get('is_active', True):
+                self._send_response(403, {'error': 'Account is deactivated. Contact administrator.'})
                 return
 
             # Verify password
@@ -329,6 +359,94 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"Admin get users error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_admin_toggle_user_status(self, path):
+        """Admin: Toggle user active status"""
+        try:
+            token = self._get_token_from_header()
+
+            if not token:
+                self._send_response(401, {'error': 'No token provided'})
+                return
+
+            admin_data = self._verify_admin(token)
+
+            if not admin_data:
+                self._send_response(403, {'error': 'Admin access required'})
+                return
+
+            # Extract user_id from path
+            user_id = path.split('/')[4]
+
+            # Get user
+            user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
+
+            if not user_doc:
+                self._send_response(404, {'error': 'User not found'})
+                return
+
+            # Don't allow admin to deactivate themselves
+            if str(user_doc['_id']) == admin_data['user_id']:
+                self._send_response(400, {'error': 'Cannot deactivate your own account'})
+                return
+
+            # Toggle status
+            new_status = not user_doc.get('is_active', True)
+
+            users_collection.update_one(
+                {'_id': ObjectId(user_id)},
+                {'$set': {'is_active': new_status, 'updated_at': datetime.utcnow()}}
+            )
+
+            self._send_response(200, {
+                'message': f"User {'activated' if new_status else 'deactivated'} successfully",
+                'is_active': new_status
+            })
+
+        except Exception as e:
+            print(f"Admin toggle user status error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_admin_delete_user(self, path):
+        """Admin: Delete user"""
+        try:
+            token = self._get_token_from_header()
+
+            if not token:
+                self._send_response(401, {'error': 'No token provided'})
+                return
+
+            admin_data = self._verify_admin(token)
+
+            if not admin_data:
+                self._send_response(403, {'error': 'Admin access required'})
+                return
+
+            # Extract user_id from path
+            user_id = path.split('/')[4]
+
+            # Get user
+            user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
+
+            if not user_doc:
+                self._send_response(404, {'error': 'User not found'})
+                return
+
+            # Don't allow admin to delete themselves
+            if str(user_doc['_id']) == admin_data['user_id']:
+                self._send_response(400, {'error': 'Cannot delete your own account'})
+                return
+
+            # Delete user
+            users_collection.delete_one({'_id': ObjectId(user_id)})
+
+            self._send_response(200, {
+                'message': 'User deleted successfully'
+            })
+
+        except Exception as e:
+            print(f"Admin delete user error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
 
