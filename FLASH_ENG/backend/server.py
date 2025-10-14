@@ -1,12 +1,17 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 from urllib.parse import urlparse, parse_qs
-from database import users_collection, roles_collection
+from database import users_collection, roles_collection, get_db
 from models import User
 from auth_utils import create_access_token, verify_token, get_user_from_token
 from bson import ObjectId
+from bson.errors import InvalidId
 import re
-from datetime import datetime
+from datetime import datetime, timezone
+import threading
+
+# Thread lock to prevent race conditions
+db_lock = threading.Lock()
 
 
 class FlashEngHandler(BaseHTTPRequestHandler):
@@ -28,15 +33,23 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
     def _get_request_body(self):
         """Get and parse request body"""
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length)
-        return json.loads(body.decode('utf-8')) if body else {}
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                return {}
+            body = self.rfile.read(content_length)
+            return json.loads(body.decode('utf-8')) if body else {}
+        except json.JSONDecodeError:
+            return None
+        except Exception as e:
+            print(f"Error reading request body: {e}")
+            return None
 
     def _get_token_from_header(self):
         """Extract token from Authorization header"""
         auth_header = self.headers.get('Authorization', '')
         if auth_header.startswith('Bearer '):
-            return auth_header[7:]
+            return auth_header[7:].strip()
         return None
 
     def _verify_admin(self, token):
@@ -45,6 +58,14 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         if user_data and user_data['role'] == 'admin':
             return user_data
         return None
+
+    def _validate_object_id(self, id_string):
+        """Validate if string is valid ObjectId"""
+        try:
+            ObjectId(id_string)
+            return True
+        except (InvalidId, TypeError):
+            return False
 
     def do_OPTIONS(self):
         """Handle preflight requests"""
@@ -121,6 +142,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         try:
             data = self._get_request_body()
 
+            if data is None:
+                self._send_response(400, {'error': 'Invalid JSON'})
+                return
+
             # Validate input
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
@@ -141,14 +166,16 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(400, {'error': 'Password must be at least 6 characters'})
                 return
 
-            # Check if user exists
-            if users_collection.find_one({'email': email}):
-                self._send_response(400, {'error': 'User already exists'})
-                return
+            # Use lock to prevent race condition
+            with db_lock:
+                # Check if user exists
+                if users_collection.find_one({'email': email}):
+                    self._send_response(400, {'error': 'User already exists'})
+                    return
 
-            # Create user
-            user = User(full_name, email, password, role='user')
-            result = users_collection.insert_one(user.to_dict())
+                # Create user
+                user = User(full_name, email, password, role='user')
+                result = users_collection.insert_one(user.to_dict())
 
             # Create token
             token = create_access_token(result.inserted_id, email, 'user')
@@ -176,6 +203,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         """Handle user login"""
         try:
             data = self._get_request_body()
+
+            if data is None:
+                self._send_response(400, {'error': 'Invalid JSON'})
+                return
 
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
@@ -242,6 +273,11 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(401, {'error': 'Invalid token'})
                 return
 
+            # Validate user_id
+            if not self._validate_object_id(user_data['user_id']):
+                self._send_response(401, {'error': 'Invalid user ID'})
+                return
+
             # Get user from database
             user_doc = users_collection.find_one({'_id': ObjectId(user_data['user_id'])})
 
@@ -284,6 +320,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             data = self._get_request_body()
 
+            if data is None:
+                self._send_response(400, {'error': 'Invalid JSON'})
+                return
+
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
             full_name = data.get('fullName', '').strip()
@@ -297,20 +337,34 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(400, {'error': 'Invalid role'})
                 return
 
-            # Check if user exists
-            if users_collection.find_one({'email': email}):
-                self._send_response(400, {'error': 'User already exists'})
+            # Validate email format
+            email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+            if not re.match(email_regex, email):
+                self._send_response(400, {'error': 'Invalid email format'})
                 return
 
-            # Create user
-            user = User(full_name, email, password, role=role)
-            result = users_collection.insert_one(user.to_dict())
+            # Check password length
+            if len(password) < 6:
+                self._send_response(400, {'error': 'Password must be at least 6 characters'})
+                return
+
+            # Use lock to prevent race condition
+            with db_lock:
+                # Check if user exists
+                if users_collection.find_one({'email': email}):
+                    self._send_response(400, {'error': 'User already exists'})
+                    return
+
+                # Create user
+                user = User(full_name, email, password, role=role)
+                result = users_collection.insert_one(user.to_dict())
 
             user_response = {
                 '_id': str(result.inserted_id),
                 'full_name': full_name,
                 'email': email,
                 'role': role,
+                'is_active': True,
                 'profile_picture': None
             }
 
@@ -349,7 +403,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'email': user['email'],
                     'role': user['role'],
                     'is_active': user.get('is_active', True),
-                    'created_at': user['created_at'].isoformat()
+                    'created_at': user['created_at'].isoformat() if user.get('created_at') else None
                 })
 
             self._send_response(200, {
@@ -377,27 +431,39 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 return
 
             # Extract user_id from path
-            user_id = path.split('/')[4]
-
-            # Get user
-            user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
-
-            if not user_doc:
-                self._send_response(404, {'error': 'User not found'})
+            parts = path.split('/')
+            if len(parts) < 5:
+                self._send_response(400, {'error': 'Invalid URL format'})
                 return
 
-            # Don't allow admin to deactivate themselves
-            if str(user_doc['_id']) == admin_data['user_id']:
-                self._send_response(400, {'error': 'Cannot deactivate your own account'})
+            user_id = parts[4]
+
+            # Validate ObjectId
+            if not self._validate_object_id(user_id):
+                self._send_response(400, {'error': 'Invalid user ID format'})
                 return
 
-            # Toggle status
-            new_status = not user_doc.get('is_active', True)
+            # Use lock to prevent race condition
+            with db_lock:
+                # Get user
+                user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
 
-            users_collection.update_one(
-                {'_id': ObjectId(user_id)},
-                {'$set': {'is_active': new_status, 'updated_at': datetime.utcnow()}}
-            )
+                if not user_doc:
+                    self._send_response(404, {'error': 'User not found'})
+                    return
+
+                # Don't allow admin to deactivate themselves
+                if str(user_doc['_id']) == admin_data['user_id']:
+                    self._send_response(400, {'error': 'Cannot deactivate your own account'})
+                    return
+
+                # Toggle status
+                new_status = not user_doc.get('is_active', True)
+
+                users_collection.update_one(
+                    {'_id': ObjectId(user_id)},
+                    {'$set': {'is_active': new_status, 'updated_at': datetime.now(timezone.utc)}}
+                )
 
             self._send_response(200, {
                 'message': f"User {'activated' if new_status else 'deactivated'} successfully",
@@ -424,22 +490,34 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 return
 
             # Extract user_id from path
-            user_id = path.split('/')[4]
-
-            # Get user
-            user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
-
-            if not user_doc:
-                self._send_response(404, {'error': 'User not found'})
+            parts = path.split('/')
+            if len(parts) < 5:
+                self._send_response(400, {'error': 'Invalid URL format'})
                 return
 
-            # Don't allow admin to delete themselves
-            if str(user_doc['_id']) == admin_data['user_id']:
-                self._send_response(400, {'error': 'Cannot delete your own account'})
+            user_id = parts[4]
+
+            # Validate ObjectId
+            if not self._validate_object_id(user_id):
+                self._send_response(400, {'error': 'Invalid user ID format'})
                 return
 
-            # Delete user
-            users_collection.delete_one({'_id': ObjectId(user_id)})
+            # Use lock to prevent race condition
+            with db_lock:
+                # Get user
+                user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
+
+                if not user_doc:
+                    self._send_response(404, {'error': 'User not found'})
+                    return
+
+                # Don't allow admin to delete themselves
+                if str(user_doc['_id']) == admin_data['user_id']:
+                    self._send_response(400, {'error': 'Cannot delete your own account'})
+                    return
+
+                # Delete user
+                users_collection.delete_one({'_id': ObjectId(user_id)})
 
             self._send_response(200, {
                 'message': 'User deleted successfully'
@@ -455,7 +533,11 @@ def run_server(port=5001):
     server_address = ('', port)
     httpd = HTTPServer(server_address, FlashEngHandler)
     print(f'✓ Server running on http://localhost:{port}')
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print('\n✓ Server stopped')
+        httpd.shutdown()
 
 
 if __name__ == '__main__':

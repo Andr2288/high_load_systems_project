@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useAuthStore } from "../store/useAuthStore.js";
 import { axiosInstance } from "../lib/axios.js";
 import { Users, UserPlus, Shield, Trash2 } from "lucide-react";
@@ -21,11 +21,7 @@ const AdminPage = () => {
         role: "user"
     });
 
-    useEffect(() => {
-        fetchUsers();
-    }, []);
-
-    const fetchUsers = async () => {
+    const fetchUsers = useCallback(async () => {
         try {
             const token = localStorage.getItem('token');
             const res = await axiosInstance.get("/admin/users", {
@@ -40,9 +36,13 @@ const AdminPage = () => {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
-    const handleCreateUser = async (e) => {
+    useEffect(() => {
+        fetchUsers();
+    }, [fetchUsers]);
+
+    const handleCreateUser = useCallback(async (e) => {
         e.preventDefault();
 
         // Prevent double submission
@@ -58,7 +58,7 @@ const AdminPage = () => {
                 }
             });
 
-            // Add new user to list immediately (optimistic update)
+            // Add new user to list
             const createdUser = response.data.user;
             setUsers(prevUsers => [...prevUsers, {
                 ...createdUser,
@@ -66,7 +66,6 @@ const AdminPage = () => {
                 created_at: new Date().toISOString()
             }]);
 
-            // Success - show toast and close modal
             toast.success("User created successfully!");
 
             setShowCreateModal(false);
@@ -78,16 +77,20 @@ const AdminPage = () => {
         } finally {
             setIsCreating(false);
         }
-    };
+    }, [isCreating, newUser]);
 
-    const handleToggleUserStatus = async (userId, currentStatus) => {
+    const handleToggleUserStatus = useCallback(async (userId, currentStatus) => {
         // Don't allow admin to deactivate themselves
         if (userId === authUser._id) {
             toast.error("You cannot deactivate your own account!");
             return;
         }
 
-        // Add userId to set of toggling users
+        // Prevent multiple simultaneous toggles
+        if (togglingUserIds.has(userId)) {
+            return;
+        }
+
         setTogglingUserIds(prev => new Set(prev).add(userId));
 
         try {
@@ -111,17 +114,16 @@ const AdminPage = () => {
             const errorMessage = error.response?.data?.error || "Failed to update user status";
             toast.error(errorMessage);
         } finally {
-            // Remove userId from set of toggling users
             setTogglingUserIds(prev => {
                 const newSet = new Set(prev);
                 newSet.delete(userId);
                 return newSet;
             });
         }
-    };
+    }, [authUser._id, togglingUserIds]);
 
-    const handleDeleteUser = async () => {
-        if (!userToDelete) return;
+    const handleDeleteUser = useCallback(async () => {
+        if (!userToDelete || isDeleting) return;
 
         setIsDeleting(true);
 
@@ -146,9 +148,9 @@ const AdminPage = () => {
         } finally {
             setIsDeleting(false);
         }
-    };
+    }, [userToDelete, isDeleting]);
 
-    const openDeleteModal = (user) => {
+    const openDeleteModal = useCallback((user) => {
         // Don't allow admin to delete themselves
         if (user._id === authUser._id) {
             toast.error("You cannot delete your own account!");
@@ -157,7 +159,21 @@ const AdminPage = () => {
 
         setUserToDelete(user);
         setShowDeleteModal(true);
-    };
+    }, [authUser._id]);
+
+    const closeCreateModal = useCallback(() => {
+        if (!isCreating) {
+            setShowCreateModal(false);
+            setNewUser({ fullName: "", email: "", password: "", role: "user" });
+        }
+    }, [isCreating]);
+
+    const closeDeleteModal = useCallback(() => {
+        if (!isDeleting) {
+            setShowDeleteModal(false);
+            setUserToDelete(null);
+        }
+    }, [isDeleting]);
 
     if (loading) {
         return (
@@ -166,6 +182,10 @@ const AdminPage = () => {
             </div>
         );
     }
+
+    const totalUsers = users.length;
+    const admins = users.filter(u => u.role === 'admin').length;
+    const regularUsers = users.filter(u => u.role === 'user').length;
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -198,7 +218,7 @@ const AdminPage = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-gray-600 mb-1">Total Users</p>
-                                <p className="text-3xl font-bold text-gray-900">{users.length}</p>
+                                <p className="text-3xl font-bold text-gray-900">{totalUsers}</p>
                             </div>
                             <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
                                 <Users className="w-6 h-6 text-blue-600" />
@@ -210,9 +230,7 @@ const AdminPage = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-gray-600 mb-1">Admins</p>
-                                <p className="text-3xl font-bold text-gray-900">
-                                    {users.filter(u => u.role === 'admin').length}
-                                </p>
+                                <p className="text-3xl font-bold text-gray-900">{admins}</p>
                             </div>
                             <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
                                 <Shield className="w-6 h-6 text-purple-600" />
@@ -224,9 +242,7 @@ const AdminPage = () => {
                         <div className="flex items-center justify-between">
                             <div>
                                 <p className="text-sm text-gray-600 mb-1">Regular Users</p>
-                                <p className="text-3xl font-bold text-gray-900">
-                                    {users.filter(u => u.role === 'user').length}
-                                </p>
+                                <p className="text-3xl font-bold text-gray-900">{regularUsers}</p>
                             </div>
                             <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                                 <Users className="w-6 h-6 text-green-600" />
@@ -297,7 +313,7 @@ const AdminPage = () => {
                                             </span>
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                                        {new Date(user.created_at).toLocaleDateString()}
+                                        {user.created_at ? new Date(user.created_at).toLocaleDateString() : 'N/A'}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         <div className="flex space-x-2">
@@ -311,9 +327,7 @@ const AdminPage = () => {
                                                 } disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center`}
                                             >
                                                 {togglingUserIds.has(user._id) ? (
-                                                    <span className="flex items-center">
-                                                            <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
-                                                        </span>
+                                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
                                                 ) : (
                                                     user.is_active ? 'Deactivate' : 'Activate'
                                                 )}
@@ -343,10 +357,8 @@ const AdminPage = () => {
                 <div
                     className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                     onClick={(e) => {
-                        // Close modal only if clicking on backdrop
-                        if (e.target === e.currentTarget && !isCreating) {
-                            setShowCreateModal(false);
-                            setNewUser({ fullName: "", email: "", password: "", role: "user" });
+                        if (e.target === e.currentTarget) {
+                            closeCreateModal();
                         }
                     }}
                 >
@@ -415,10 +427,7 @@ const AdminPage = () => {
                             <div className="flex space-x-4 pt-4">
                                 <button
                                     type="button"
-                                    onClick={() => {
-                                        setShowCreateModal(false);
-                                        setNewUser({ fullName: "", email: "", password: "", role: "user" });
-                                    }}
+                                    onClick={closeCreateModal}
                                     disabled={isCreating}
                                     className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
@@ -449,9 +458,8 @@ const AdminPage = () => {
                 <div
                     className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                     onClick={(e) => {
-                        if (e.target === e.currentTarget && !isDeleting) {
-                            setShowDeleteModal(false);
-                            setUserToDelete(null);
+                        if (e.target === e.currentTarget) {
+                            closeDeleteModal();
                         }
                     }}
                 >
@@ -481,10 +489,7 @@ const AdminPage = () => {
                         <div className="flex space-x-4">
                             <button
                                 type="button"
-                                onClick={() => {
-                                    setShowDeleteModal(false);
-                                    setUserToDelete(null);
-                                }}
+                                onClick={closeDeleteModal}
                                 disabled={isDeleting}
                                 className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
                             >

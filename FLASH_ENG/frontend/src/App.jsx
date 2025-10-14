@@ -1,5 +1,7 @@
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
+import { useEffect, useRef } from "react";
+import { Loader } from "lucide-react";
 
 import Navbar from "./components/Navbar.jsx";
 
@@ -12,17 +14,19 @@ import ProfilePage from "./pages/ProfilePage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
 
 import { useAuthStore } from "./store/useAuthStore.js";
-import { useEffect } from "react";
-
-import { Loader } from "lucide-react";
 
 const App = () => {
     const { authUser, checkAuth, isCheckingAuth } = useAuthStore();
     const location = useLocation();
+    const hasCheckedAuth = useRef(false);
 
     useEffect(() => {
-        checkAuth();
-    }, [checkAuth]);
+        // Only check auth once when app loads
+        if (!hasCheckedAuth.current) {
+            hasCheckedAuth.current = true;
+            checkAuth();
+        }
+    }, []); // Empty dependency array - run only once
 
     if (isCheckingAuth && !authUser) {
         return (
@@ -32,17 +36,17 @@ const App = () => {
         );
     }
 
+    const isPublicRoute = location.pathname === "/" ||
+        location.pathname === "/signup" ||
+        location.pathname === "/login";
+
     return (
         <div className="min-h-screen bg-gray-50">
             <Toaster position="top-center" />
 
-            {location.pathname !== "/" && location.pathname !== "/signup" && location.pathname !== "/login" && authUser && <Navbar />}
+            {!isPublicRoute && authUser && <Navbar />}
 
-            <div className={`${
-                location.pathname !== "/" && location.pathname !== "/signup" && location.pathname !== "/login" && authUser
-                    ? "ml-64"
-                    : ""
-            }`}>
+            <div className={`${!isPublicRoute && authUser ? "ml-64" : ""}`}>
                 <Routes>
                     {/* Public Routes */}
                     <Route path="/" element={<LandingPage />} />

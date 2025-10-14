@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { axiosInstance } from "../lib/axios.js";
 import toast from "react-hot-toast";
 
-export const useAuthStore = create((set) => ({
+export const useAuthStore = create((set, get) => ({
     authUser: null,
     isSigningUp: false,
     isLoggingIn: false,
@@ -10,6 +10,11 @@ export const useAuthStore = create((set) => ({
     isCheckingAuth: true,
 
     checkAuth: async () => {
+        // Prevent multiple simultaneous checks
+        if (get().isCheckingAuth === false) {
+            return;
+        }
+
         try {
             const token = localStorage.getItem('token');
 
@@ -24,17 +29,20 @@ export const useAuthStore = create((set) => ({
                 }
             });
 
-            set({ authUser: res.data });
+            set({ authUser: res.data, isCheckingAuth: false });
         } catch (error) {
             console.log("Error in checkAuth", error);
-            set({ authUser: null });
+            set({ authUser: null, isCheckingAuth: false });
             localStorage.removeItem('token');
-        } finally {
-            set({ isCheckingAuth: false });
         }
     },
 
     signup: async (data) => {
+        // Prevent double submission
+        if (get().isSigningUp) {
+            return;
+        }
+
         set({ isSigningUp: true });
         try {
             const res = await axiosInstance.post("/auth/signup", data);
@@ -42,19 +50,23 @@ export const useAuthStore = create((set) => ({
             // Save token
             localStorage.setItem('token', res.data.token);
 
-            set({ authUser: res.data.user });
+            set({ authUser: res.data.user, isSigningUp: false });
             toast.success("Account created successfully!");
 
         } catch (error) {
             const errorMessage = error.response?.data?.error || "Signup failed";
             toast.error(errorMessage);
             console.log("Error in signup", error);
-        } finally {
             set({ isSigningUp: false });
         }
     },
 
     login: async (data) => {
+        // Prevent double submission
+        if (get().isLoggingIn) {
+            return;
+        }
+
         set({ isLoggingIn: true });
         try {
             const res = await axiosInstance.post("/auth/login", data);
@@ -62,14 +74,13 @@ export const useAuthStore = create((set) => ({
             // Save token
             localStorage.setItem('token', res.data.token);
 
-            set({ authUser: res.data.user });
+            set({ authUser: res.data.user, isLoggingIn: false });
             toast.success("Logged in successfully!");
 
         } catch (error) {
             const errorMessage = error.response?.data?.error || "Login failed";
             toast.error(errorMessage);
             console.log("Error in login", error);
-        } finally {
             set({ isLoggingIn: false });
         }
     },

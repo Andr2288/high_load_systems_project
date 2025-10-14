@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from bson import ObjectId
 import bcrypt
 
@@ -11,8 +11,9 @@ class User:
         self.email = email
         self.password = self._hash_password(password)
         self.role = role
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        # Use timezone-aware datetime (fixed deprecated utcnow)
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
         self.is_active = True
         self.profile_picture = None
 
@@ -25,10 +26,14 @@ class User:
     @staticmethod
     def verify_password(plain_password, hashed_password):
         """Verify password"""
-        return bcrypt.checkpw(
-            plain_password.encode('utf-8'),
-            hashed_password.encode('utf-8')
-        )
+        try:
+            return bcrypt.checkpw(
+                plain_password.encode('utf-8'),
+                hashed_password.encode('utf-8')
+            )
+        except Exception as e:
+            print(f"Password verification error: {e}")
+            return False
 
     def to_dict(self):
         """Convert user to dictionary for MongoDB"""
@@ -69,8 +74,9 @@ class UserSettings:
         self.ai_model = ai_model
         self.voice_enabled = voice_enabled
         self.notifications_enabled = notifications_enabled
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        # Use timezone-aware datetime (fixed deprecated utcnow)
+        self.created_at = datetime.now(timezone.utc)
+        self.updated_at = datetime.now(timezone.utc)
 
     def to_dict(self):
         """Convert settings to dictionary"""

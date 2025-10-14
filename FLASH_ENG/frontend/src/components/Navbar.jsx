@@ -1,6 +1,7 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore.js";
 import { BookOpen, LogOut, User, Settings, Home, Shield, Users } from "lucide-react";
+import { useMemo } from "react";
 
 const Navbar = () => {
     const { authUser, logout } = useAuthStore();
@@ -8,18 +9,19 @@ const Navbar = () => {
 
     const isActive = (path) => location.pathname === path;
 
-    const menuItems = [
+    // Memoize menu items to prevent recreation on every render
+    const menuItems = useMemo(() => [
         {
             path: "/home",
             icon: Home,
             label: "Home",
-            show: authUser?.role === 'user' // Тільки для звичайних користувачів
+            show: authUser?.role === 'user'
         },
         {
             path: "/home",
             icon: Users,
             label: "Users",
-            show: authUser?.role === 'admin' // Тільки для адмінів
+            show: authUser?.role === 'admin'
         },
         {
             path: "/profile",
@@ -33,7 +35,7 @@ const Navbar = () => {
             label: "Settings",
             show: true
         }
-    ];
+    ], [authUser?.role]);
 
     return (
         <div className="fixed left-0 top-0 h-screen w-64 bg-white border-r border-gray-200 shadow-sm flex flex-col">
@@ -86,7 +88,7 @@ const Navbar = () => {
 
                     return (
                         <Link
-                            key={item.path}
+                            key={item.path + item.label}
                             to={item.path}
                             className={`flex items-center space-x-3 px-4 py-3 rounded-lg transition-all ${
                                 active

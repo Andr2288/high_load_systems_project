@@ -1,29 +1,78 @@
-// src/pages/LandingPage.jsx
-import { useState, useEffect } from 'react';
-import { ArrowRight, BookOpen, Brain, BarChart3, Volume2, Heart, Settings, CheckCircle, Play } from 'lucide-react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { ArrowRight, BookOpen, Brain, BarChart3, Settings, CheckCircle } from 'lucide-react';
 
 const LandingPage = () => {
     const [isVisible, setIsVisible] = useState({});
 
+    // Features data moved outside component for better performance
+    const features = useMemo(() => [
+        {
+            icon: BookOpen,
+            title: "Розумні флеш-картки",
+            description: "Створюйте та налаштовуйте персональні флеш-картки з перекладом, прикладами та аудіо",
+            color: "from-blue-500 to-blue-600"
+        },
+        {
+            icon: Brain,
+            title: "ШІ-генерація вправ",
+            description: "Штучний інтелект створює унікальні та персоналізовані завдання на основі ваших карток",
+            color: "from-purple-500 to-purple-600"
+        },
+        {
+            icon: BarChart3,
+            title: "Відстеження прогресу",
+            description: "Детальна статистика та аналітика вашого навчального процесу",
+            color: "from-green-500 to-green-600"
+        },
+        {
+            icon: Settings,
+            title: "Персоналізація",
+            description: "Налаштування під ваш рівень знань та індивідуальні потреби навчання",
+            color: "from-indigo-500 to-indigo-600"
+        }
+    ], []);
+
+    const benefits = useMemo(() => [
+        {
+            title: "Швидке засвоєння",
+            description: "Наукові методи spaced repetition допомагають запам'ятати слова назавжди"
+        },
+        {
+            title: "Адаптивність",
+            description: "Система підлаштовується під ваш темп навчання та рівень знань"
+        },
+        {
+            title: "Мотивація",
+            description: "Ігрові елементи та досягнення роблять навчання захоплюючим"
+        }
+    ], []);
+
     useEffect(() => {
+        // Create observer only once
         const observer = new IntersectionObserver(
             (entries) => {
                 entries.forEach(entry => {
-                    setIsVisible(prev => ({
-                        ...prev,
-                        [entry.target.id]: entry.isIntersecting
-                    }));
+                    if (entry.target.id) {
+                        setIsVisible(prev => ({
+                            ...prev,
+                            [entry.target.id]: entry.isIntersecting
+                        }));
+                    }
                 });
             },
             { threshold: 0.1 }
         );
 
-        document.querySelectorAll('[id]').forEach(el => {
-            observer.observe(el);
-        });
+        // Observe all elements with id
+        const elements = document.querySelectorAll('[id]');
+        elements.forEach(el => observer.observe(el));
 
-        return () => observer.disconnect();
-    }, []);
+        // Cleanup function
+        return () => {
+            elements.forEach(el => observer.unobserve(el));
+            observer.disconnect();
+        };
+    }, []); // Empty dependency array - run only once
 
     return (
         <div className="bg-gray-900 text-white min-h-screen">
@@ -54,9 +103,9 @@ const LandingPage = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center relative z-10">
                     <div className="animate-fade-in-up">
                         <h1 className="text-5xl md:text-7xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-green-400 bg-clip-text text-transparent">
-                Практикуйте англійську
-              </span>
+                            <span className="bg-gradient-to-r from-blue-400 via-purple-500 to-green-400 bg-clip-text text-transparent">
+                                Практикуйте англійську
+                            </span>
                             <span className="block">з силою ШІ</span>
                         </h1>
                     </div>
@@ -98,9 +147,9 @@ const LandingPage = () => {
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-16">
                         <h2 className="text-4xl md:text-5xl font-bold mb-6">
-              <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
-                Потужні функції для ефективного навчання
-              </span>
+                            <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">
+                                Потужні функції для ефективного навчання
+                            </span>
                         </h2>
                         <p className="text-xl text-gray-300 max-w-3xl mx-auto">
                             Все що потрібно для успішного вивчення англійської мови в одному місці
@@ -108,32 +157,7 @@ const LandingPage = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-8">
-                        {[
-                            {
-                                icon: BookOpen,
-                                title: "Розумні флеш-картки",
-                                description: "Створюйте та налаштовуйте персональні флеш-картки з перекладом, прикладами та аудіо",
-                                color: "from-blue-500 to-blue-600"
-                            },
-                            {
-                                icon: Brain,
-                                title: "ШІ-генерація вправ",
-                                description: "Штучний інтелект створює унікальні та персоналізовані завдання на основі ваших карток",
-                                color: "from-purple-500 to-purple-600"
-                            },
-                            {
-                                icon: BarChart3,
-                                title: "Відстеження прогресу",
-                                description: "Детальна статистика та аналітика вашого навчального процесу",
-                                color: "from-green-500 to-green-600"
-                            },
-                            {
-                                icon: Settings,
-                                title: "Персоналізація",
-                                description: "Налаштування під ваш рівень знань та індивідуальні потреби навчання",
-                                color: "from-indigo-500 to-indigo-600"
-                            }
-                        ].map((feature, index) => (
+                        {features.map((feature, index) => (
                             <div
                                 key={index}
                                 className="bg-gray-800/50 backdrop-blur-sm rounded-3xl p-8 border border-gray-700 hover:border-gray-600 transition-all duration-300 hover:transform hover:scale-105 hover:shadow-2xl"
@@ -149,7 +173,7 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* Benefits Section - НОВИЙ ПРОСТИЙ ДИЗАЙН */}
+            {/* Benefits Section */}
             <section id="benefits" className="py-20 bg-gray-900">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="text-center mb-16">
@@ -162,20 +186,7 @@ const LandingPage = () => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                        {[
-                            {
-                                title: "Швидке засвоєння",
-                                description: "Наукові методи spaced repetition допомагають запам'ятати слова назавжди"
-                            },
-                            {
-                                title: "Адаптивність",
-                                description: "Система підлаштовується під ваш темп навчання та рівень знань"
-                            },
-                            {
-                                title: "Мотивація",
-                                description: "Ігрові елементи та досягнення роблять навчання захоплюючим"
-                            }
-                        ].map((benefit, index) => (
+                        {benefits.map((benefit, index) => (
                             <div
                                 key={index}
                                 className="bg-gray-800/50 rounded-2xl p-8 border border-gray-700 hover:border-gray-600 transition-all duration-300"
@@ -191,7 +202,7 @@ const LandingPage = () => {
                 </div>
             </section>
 
-            {/* CTA Section - НОВИЙ ПРОСТИЙ ДИЗАЙН */}
+            {/* CTA Section */}
             <section className="py-20 bg-gray-800">
                 <div className="max-w-4xl mx-auto text-center px-4 sm:px-6 lg:px-8">
                     <h2 className="text-4xl md:text-5xl font-bold mb-6 text-white">
