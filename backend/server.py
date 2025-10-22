@@ -1,9 +1,9 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
-from urllib.parse import urlparse, parse_qs
-from database import users_collection, roles_collection
-from models import User
-from auth_utils import create_access_token, verify_token, get_user_from_token
+from urllib.parse import urlparse
+from database import users_collection, user_settings_collection
+from models import User, UserSettings
+from auth_utils import create_access_token, get_user_from_token
 from bson import ObjectId
 import re
 from datetime import datetime
@@ -57,15 +57,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        # Signup endpoint
+        # Auth endpoints
         if path == '/api/auth/signup':
             self.handle_signup()
-
-        # Login endpoint
         elif path == '/api/auth/login':
             self.handle_login()
 
-        # Admin: Create user
+        # Admin endpoints
         elif path == '/api/admin/users':
             self.handle_admin_create_user()
 
@@ -77,15 +75,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        # Check auth
+        # Auth endpoints
         if path == '/api/auth/check':
             self.handle_check_auth()
-
-        # Get current user
         elif path == '/api/auth/me':
             self.handle_get_me()
 
-        # Admin: Get all users
+        # Admin endpoints
         elif path == '/api/admin/users':
             self.handle_admin_get_users()
 
@@ -97,7 +93,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        # Admin: Toggle user status
+        # Admin endpoints
         if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
             self.handle_admin_toggle_user_status(path)
 
@@ -109,19 +105,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         parsed_path = urlparse(self.path)
         path = parsed_path.path
 
-        # Admin: Delete user
+        # Admin endpoints
         if path.startswith('/api/admin/users/'):
             self.handle_admin_delete_user(path)
 
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
 
+    # ==================== AUTH HANDLERS ====================
+
     def handle_signup(self):
         """Handle user registration"""
         try:
             data = self._get_request_body()
 
-            # Validate input
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
             full_name = data.get('fullName', '').strip()
@@ -130,30 +127,28 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(400, {'error': 'All fields are required'})
                 return
 
-            # Validate email format
             email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(email_regex, email):
                 self._send_response(400, {'error': 'Invalid email format'})
                 return
 
-            # Check password length
             if len(password) < 6:
                 self._send_response(400, {'error': 'Password must be at least 6 characters'})
                 return
 
-            # Check if user exists
             if users_collection.find_one({'email': email}):
                 self._send_response(400, {'error': 'User already exists'})
                 return
 
-            # Create user
             user = User(full_name, email, password, role='user')
             result = users_collection.insert_one(user.to_dict())
 
-            # Create token
+            # Create default settings for user
+            settings = UserSettings(str(result.inserted_id))
+            user_settings_collection.insert_one(settings.to_dict())
+
             token = create_access_token(result.inserted_id, email, 'user')
 
-            # Response
             user_response = {
                 '_id': str(result.inserted_id),
                 'full_name': full_name,
@@ -184,31 +179,26 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(400, {'error': 'Email and password are required'})
                 return
 
-            # Find user
             user_doc = users_collection.find_one({'email': email})
 
             if not user_doc:
                 self._send_response(401, {'error': 'Invalid credentials'})
                 return
 
-            # Check if user is active
             if not user_doc.get('is_active', True):
-                self._send_response(403, {'error': 'Account is deactivated. Contact administrator.'})
+                self._send_response(403, {'error': 'Account is deactivated'})
                 return
 
-            # Verify password
             if not User.verify_password(password, user_doc['password']):
                 self._send_response(401, {'error': 'Invalid credentials'})
                 return
 
-            # Create token
             token = create_access_token(
                 user_doc['_id'],
                 user_doc['email'],
                 user_doc['role']
             )
 
-            # Response
             user_response = {
                 '_id': str(user_doc['_id']),
                 'full_name': user_doc['full_name'],
@@ -242,7 +232,6 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(401, {'error': 'Invalid token'})
                 return
 
-            # Get user from database
             user_doc = users_collection.find_one({'_id': ObjectId(user_data['user_id'])})
 
             if not user_doc:
@@ -267,8 +256,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         """Get current user info"""
         self.handle_check_auth()
 
+    # ==================== ADMIN HANDLERS ====================
+
     def handle_admin_create_user(self):
-        """Admin: Create new user (including admin)"""
+        """Admin: Create new user"""
         try:
             token = self._get_token_from_header()
 
@@ -297,12 +288,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(400, {'error': 'Invalid role'})
                 return
 
-            # Check if user exists
             if users_collection.find_one({'email': email}):
                 self._send_response(400, {'error': 'User already exists'})
                 return
 
-            # Create user
             user = User(full_name, email, password, role=role)
             result = users_collection.insert_one(user.to_dict())
 
@@ -338,7 +327,6 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(403, {'error': 'Admin access required'})
                 return
 
-            # Get all users
             users = list(users_collection.find({}, {'password': 0}))
 
             users_response = []
@@ -362,7 +350,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(500, {'error': 'Server error'})
 
     def handle_admin_toggle_user_status(self, path):
-        """Admin: Toggle user active status"""
+        """Admin: Toggle user status"""
         try:
             token = self._get_token_from_header()
 
@@ -376,22 +364,17 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(403, {'error': 'Admin access required'})
                 return
 
-            # Extract user_id from path
             user_id = path.split('/')[4]
-
-            # Get user
             user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
 
             if not user_doc:
                 self._send_response(404, {'error': 'User not found'})
                 return
 
-            # Don't allow admin to deactivate themselves
             if str(user_doc['_id']) == admin_data['user_id']:
                 self._send_response(400, {'error': 'Cannot deactivate your own account'})
                 return
 
-            # Toggle status
             new_status = not user_doc.get('is_active', True)
 
             users_collection.update_one(
@@ -405,7 +388,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Admin toggle user status error: {e}")
+            print(f"Admin toggle status error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_admin_delete_user(self, path):
@@ -423,22 +406,17 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(403, {'error': 'Admin access required'})
                 return
 
-            # Extract user_id from path
             user_id = path.split('/')[4]
-
-            # Get user
             user_doc = users_collection.find_one({'_id': ObjectId(user_id)})
 
             if not user_doc:
                 self._send_response(404, {'error': 'User not found'})
                 return
 
-            # Don't allow admin to delete themselves
             if str(user_doc['_id']) == admin_data['user_id']:
                 self._send_response(400, {'error': 'Cannot delete your own account'})
                 return
 
-            # Delete user
             users_collection.delete_one({'_id': ObjectId(user_id)})
 
             self._send_response(200, {

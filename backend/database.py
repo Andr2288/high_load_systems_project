@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # MongoDB connection
-MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://admin:YOUR_PASSWORD@flashengdotnet.iijlrb7.mongodb.net/?retryWrites=true&w=majority&appName=FlashEngDotNET')
+MONGODB_URI = os.getenv('MONGODB_URI', 'mongodb+srv://admin:1234567890@flashengdotnet.iijlrb7.mongodb.net/?retryWrites=true&w=majority&appName=FlashEngDotNET')
 
 try:
     client = MongoClient(MONGODB_URI)
@@ -13,7 +13,10 @@ try:
 
     # Collections
     users_collection = db['users']
-    roles_collection = db['roles']
+    categories_collection = db['categories']
+    flashcards_collection = db['flashcards']
+    user_settings_collection = db['user_settings']
+    practice_sessions_collection = db['practice_sessions']
 
     # Test connection
     client.admin.command('ping')
@@ -23,31 +26,10 @@ except Exception as e:
     print(f"✗ MongoDB connection error: {e}")
     db = None
     users_collection = None
-    roles_collection = None
+    categories_collection = None
+    flashcards_collection = None
+    user_settings_collection = None
+    practice_sessions_collection = None
 
 
-def init_roles():
-    """Initialize default roles in database"""
-    if roles_collection is None:
-        return
-
-    # Check if roles exist
-    if roles_collection.count_documents({}) == 0:
-        default_roles = [
-            {
-                'name': 'user',
-                'description': 'Regular user - can create flashcards and practice',
-                'permissions': ['create_flashcard', 'edit_own_flashcard', 'practice']
-            },
-            {
-                'name': 'admin',
-                'description': 'Administrator - full system access',
-                'permissions': ['all']
-            }
-        ]
-        roles_collection.insert_many(default_roles)
-        print("✓ Default roles created!")
-
-
-# Initialize roles on startup
-init_roles()
+# Database is ready

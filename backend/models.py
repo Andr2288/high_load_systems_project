@@ -83,3 +83,88 @@ class UserSettings:
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
+
+
+class Category:
+    """Category model for organizing flashcards"""
+
+    def __init__(self, user_id, name, description='', color='#3B82F6'):
+        self.user_id = user_id
+        self.name = name
+        self.description = description
+        self.color = color
+        self.created_at = datetime.utcnow()
+        self.updated_at = datetime.utcnow()
+
+    def to_dict(self):
+        """Convert category to dictionary"""
+        return {
+            'user_id': self.user_id,
+            'name': self.name,
+            'description': self.description,
+            'color': self.color,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
+        }
+
+
+class Flashcard:
+    """Flashcard model for learning words"""
+
+    def __init__(self, user_id, category_id, word, translation,
+                 example='', explanation='', difficulty='medium'):
+        self.user_id = user_id
+        self.category_id = category_id
+        self.word = word
+        self.translation = translation
+        self.example = example
+        self.explanation = explanation
+        self.difficulty = difficulty  # easy, medium, hard
+        self.times_practiced = 0
+        self.times_correct = 0
+        self.last_practiced = None
+        self.created_at = datetime.utcnow()
+        self.updated_at = datetime.utcnow()
+
+    def to_dict(self):
+        """Convert flashcard to dictionary"""
+        return {
+            'user_id': self.user_id,
+            'category_id': self.category_id,
+            'word': self.word,
+            'translation': self.translation,
+            'example': self.example,
+            'explanation': self.explanation,
+            'difficulty': self.difficulty,
+            'times_practiced': self.times_practiced,
+            'times_correct': self.times_correct,
+            'last_practiced': self.last_practiced,
+            'created_at': self.created_at,
+            'updated_at': self.updated_at
+        }
+
+
+class PracticeSession:
+    """Practice session model for tracking user progress"""
+
+    def __init__(self, user_id, category_id, total_cards,
+                 correct_answers, session_duration):
+        self.user_id = user_id
+        self.category_id = category_id
+        self.total_cards = total_cards
+        self.correct_answers = correct_answers
+        self.session_duration = session_duration  # in seconds
+        self.score_percentage = (correct_answers / total_cards * 100) if total_cards > 0 else 0
+        self.created_at = datetime.utcnow()
+
+    def to_dict(self):
+        """Convert session to dictionary"""
+        return {
+            'user_id': self.user_id,
+            'category_id': self.category_id,
+            'total_cards': self.total_cards,
+            'correct_answers': self.correct_answers,
+            'session_duration': self.session_duration,
+            'score_percentage': self.score_percentage,
+            'created_at': self.created_at
+        }
