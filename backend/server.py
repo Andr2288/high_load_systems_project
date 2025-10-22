@@ -85,6 +85,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         elif path == '/api/admin/users':
             self.handle_admin_get_users()
 
+        # Settings endpoints
+        elif path == '/api/settings':
+            self.handle_get_settings()
+
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
 
@@ -96,6 +100,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         # Admin endpoints
         if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
             self.handle_admin_toggle_user_status(path)
+
+        # Settings endpoints
+        elif path == '/api/settings':
+            self.handle_update_settings()
 
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
@@ -154,7 +162,8 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'full_name': full_name,
                 'email': email,
                 'role': 'user',
-                'profile_picture': None
+                'profile_picture': None,
+                'created_at': user.created_at.isoformat()
             }
 
             self._send_response(201, {
@@ -204,7 +213,8 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'full_name': user_doc['full_name'],
                 'email': user_doc['email'],
                 'role': user_doc['role'],
-                'profile_picture': user_doc.get('profile_picture')
+                'profile_picture': user_doc.get('profile_picture'),
+                'created_at': user_doc.get('created_at').isoformat() if user_doc.get('created_at') else None
             }
 
             self._send_response(200, {
@@ -243,7 +253,8 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'full_name': user_doc['full_name'],
                 'email': user_doc['email'],
                 'role': user_doc['role'],
-                'profile_picture': user_doc.get('profile_picture')
+                'profile_picture': user_doc.get('profile_picture'),
+                'created_at': user_doc.get('created_at').isoformat() if user_doc.get('created_at') else None
             }
 
             self._send_response(200, user_response)
@@ -425,6 +436,106 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"Admin delete user error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    # ==================== SETTINGS HANDLERS ====================
+
+    def handle_get_settings(self):
+        """Get user settings"""
+        try:
+            token = self._get_token_from_header()
+
+            if not token:
+                self._send_response(401, {'error': 'No token provided'})
+                return
+
+            user_data = get_user_from_token(token)
+
+            if not user_data:
+                self._send_response(401, {'error': 'Invalid token'})
+                return
+
+            # Find settings for this user
+            settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
+
+            # If no settings exist, create default settings
+            if not settings_doc:
+                default_settings = UserSettings(user_data['user_id'])
+                user_settings_collection.insert_one(default_settings.to_dict())
+                settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
+
+            settings_response = {
+                'language_level': settings_doc.get('language_level', 'beginner'),
+                'ai_model': settings_doc.get('ai_model', 'gpt-3.5'),
+                'voice_enabled': settings_doc.get('voice_enabled', True),
+                'notifications_enabled': settings_doc.get('notifications_enabled', True)
+            }
+
+            self._send_response(200, settings_response)
+
+        except Exception as e:
+            print(f"Get settings error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_update_settings(self):
+        """Update user settings"""
+        try:
+            token = self._get_token_from_header()
+
+            if not token:
+                self._send_response(401, {'error': 'No token provided'})
+                return
+
+            user_data = get_user_from_token(token)
+
+            if not user_data:
+                self._send_response(401, {'error': 'Invalid token'})
+                return
+
+            data = self._get_request_body()
+
+            # Validate data
+            language_level = data.get('language_level', 'beginner')
+            ai_model = data.get('ai_model', 'gpt-3.5')
+            voice_enabled = data.get('voice_enabled', True)
+            notifications_enabled = data.get('notifications_enabled', True)
+
+            # Check valid values
+            if language_level not in ['beginner', 'intermediate', 'advanced']:
+                self._send_response(400, {'error': 'Invalid language level'})
+                return
+
+            if ai_model not in ['gpt-3.5', 'gpt-4']:
+                self._send_response(400, {'error': 'Invalid AI model'})
+                return
+
+            # Update settings in database
+            user_settings_collection.update_one(
+                {'user_id': user_data['user_id']},
+                {
+                    '$set': {
+                        'language_level': language_level,
+                        'ai_model': ai_model,
+                        'voice_enabled': voice_enabled,
+                        'notifications_enabled': notifications_enabled,
+                        'updated_at': datetime.utcnow()
+                    }
+                },
+                upsert=True  # Create if not exists
+            )
+
+            self._send_response(200, {
+                'message': 'Settings updated successfully',
+                'settings': {
+                    'language_level': language_level,
+                    'ai_model': ai_model,
+                    'voice_enabled': voice_enabled,
+                    'notifications_enabled': notifications_enabled
+                }
+            })
+
+        except Exception as e:
+            print(f"Update settings error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
 

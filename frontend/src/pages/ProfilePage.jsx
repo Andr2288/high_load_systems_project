@@ -6,6 +6,18 @@ const ProfilePage = () => {
 
     if (!authUser) return null;
 
+    // Format date nicely
+    const formatDate = (dateString) => {
+        if (!dateString) return "Unknown";
+
+        const date = new Date(dateString);
+        return date.toLocaleDateString('en-US', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric'
+        });
+    };
+
     return (
         <div className="min-h-screen bg-gray-50">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
@@ -80,7 +92,7 @@ const ProfilePage = () => {
                                 <div>
                                     <p className="text-sm text-gray-600">Member Since</p>
                                     <p className="text-lg font-semibold text-gray-900">
-                                        {new Date().toLocaleDateString()}
+                                        {formatDate(authUser.created_at)}
                                     </p>
                                 </div>
                             </div>
