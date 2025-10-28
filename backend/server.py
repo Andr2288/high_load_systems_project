@@ -1,8 +1,8 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 from urllib.parse import urlparse
-from database import users_collection, user_settings_collection
-from models import User, UserSettings
+from database import users_collection, user_settings_collection, categories_collection, flashcards_collection
+from models import User, UserSettings, Category, Flashcard
 from auth_utils import create_access_token, get_user_from_token
 from bson import ObjectId
 import re
@@ -46,6 +46,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             return user_data
         return None
 
+    def _get_user_from_request(self):
+        """Get authenticated user from request"""
+        token = self._get_token_from_header()
+        if not token:
+            return None
+        return get_user_from_token(token)
+
     def do_OPTIONS(self):
         """Handle preflight requests"""
         self.send_response(200)
@@ -66,6 +73,14 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         # Admin endpoints
         elif path == '/api/admin/users':
             self.handle_admin_create_user()
+
+        # Category endpoints
+        elif path == '/api/categories':
+            self.handle_create_category()
+
+        # Flashcard endpoints
+        elif path == '/api/flashcards':
+            self.handle_create_flashcard()
 
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
@@ -89,6 +104,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         elif path == '/api/settings':
             self.handle_get_settings()
 
+        # Category endpoints
+        elif path == '/api/categories':
+            self.handle_get_categories()
+        elif path.startswith('/api/categories/') and '/flashcards' in path:
+            # GET /api/categories/:id/flashcards
+            self.handle_get_flashcards_by_category(path)
+
+        # Flashcard endpoints
+        elif path == '/api/flashcards':
+            self.handle_get_flashcards()
+        elif path.startswith('/api/flashcards/'):
+            # GET /api/flashcards/:id
+            self.handle_get_flashcard(path)
+
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
 
@@ -105,6 +134,16 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         elif path == '/api/settings':
             self.handle_update_settings()
 
+        # Category endpoints
+        elif path.startswith('/api/categories/'):
+            # PUT /api/categories/:id
+            self.handle_update_category(path)
+
+        # Flashcard endpoints
+        elif path.startswith('/api/flashcards/'):
+            # PUT /api/flashcards/:id
+            self.handle_update_flashcard(path)
+
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
 
@@ -116,6 +155,16 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         # Admin endpoints
         if path.startswith('/api/admin/users/'):
             self.handle_admin_delete_user(path)
+
+        # Category endpoints
+        elif path.startswith('/api/categories/'):
+            # DELETE /api/categories/:id
+            self.handle_delete_category(path)
+
+        # Flashcard endpoints
+        elif path.startswith('/api/flashcards/'):
+            # DELETE /api/flashcards/:id
+            self.handle_delete_flashcard(path)
 
         else:
             self._send_response(404, {'error': 'Endpoint not found'})
@@ -536,6 +585,474 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"Update settings error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    # ==================== CATEGORY HANDLERS ====================
+
+    def handle_create_category(self):
+        """Create new category"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+
+            name = data.get('name', '').strip()
+            description = data.get('description', '').strip()
+            color = data.get('color', '#3B82F6')
+
+            if not name:
+                self._send_response(400, {'error': 'Category name is required'})
+                return
+
+            # Check if category with same name already exists for this user
+            existing = categories_collection.find_one({
+                'user_id': user_data['user_id'],
+                'name': name
+            })
+
+            if existing:
+                self._send_response(400, {'error': 'Category with this name already exists'})
+                return
+
+            category = Category(user_data['user_id'], name, description, color)
+            result = categories_collection.insert_one(category.to_dict())
+
+            category_response = {
+                '_id': str(result.inserted_id),
+                'name': name,
+                'description': description,
+                'color': color,
+                'flashcard_count': 0,
+                'created_at': category.created_at.isoformat()
+            }
+
+            self._send_response(201, {
+                'message': 'Category created successfully',
+                'category': category_response
+            })
+
+        except Exception as e:
+            print(f"Create category error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_get_categories(self):
+        """Get all categories for current user"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            categories = list(categories_collection.find({'user_id': user_data['user_id']}))
+
+            categories_response = []
+            for cat in categories:
+                # Count flashcards in this category
+                flashcard_count = flashcards_collection.count_documents({
+                    'category_id': str(cat['_id'])
+                })
+
+                categories_response.append({
+                    '_id': str(cat['_id']),
+                    'name': cat['name'],
+                    'description': cat.get('description', ''),
+                    'color': cat.get('color', '#3B82F6'),
+                    'flashcard_count': flashcard_count,
+                    'created_at': cat['created_at'].isoformat()
+                })
+
+            self._send_response(200, {
+                'categories': categories_response,
+                'total': len(categories_response)
+            })
+
+        except Exception as e:
+            print(f"Get categories error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_update_category(self, path):
+        """Update category"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            category_id = path.split('/')[3]
+            data = self._get_request_body()
+
+            # Verify category belongs to user
+            category = categories_collection.find_one({
+                '_id': ObjectId(category_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not category:
+                self._send_response(404, {'error': 'Category not found'})
+                return
+
+            name = data.get('name', '').strip()
+            description = data.get('description', '').strip()
+            color = data.get('color', '#3B82F6')
+
+            if not name:
+                self._send_response(400, {'error': 'Category name is required'})
+                return
+
+            # Check if another category with same name exists
+            existing = categories_collection.find_one({
+                'user_id': user_data['user_id'],
+                'name': name,
+                '_id': {'$ne': ObjectId(category_id)}
+            })
+
+            if existing:
+                self._send_response(400, {'error': 'Category with this name already exists'})
+                return
+
+            categories_collection.update_one(
+                {'_id': ObjectId(category_id)},
+                {
+                    '$set': {
+                        'name': name,
+                        'description': description,
+                        'color': color,
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+
+            self._send_response(200, {
+                'message': 'Category updated successfully',
+                'category': {
+                    '_id': category_id,
+                    'name': name,
+                    'description': description,
+                    'color': color
+                }
+            })
+
+        except Exception as e:
+            print(f"Update category error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_delete_category(self, path):
+        """Delete category and all its flashcards"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            category_id = path.split('/')[3]
+
+            # Verify category belongs to user
+            category = categories_collection.find_one({
+                '_id': ObjectId(category_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not category:
+                self._send_response(404, {'error': 'Category not found'})
+                return
+
+            # Delete all flashcards in this category
+            flashcards_collection.delete_many({'category_id': category_id})
+
+            # Delete category
+            categories_collection.delete_one({'_id': ObjectId(category_id)})
+
+            self._send_response(200, {'message': 'Category deleted successfully'})
+
+        except Exception as e:
+            print(f"Delete category error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    # ==================== FLASHCARD HANDLERS ====================
+
+    def handle_create_flashcard(self):
+        """Create new flashcard"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+
+            category_id = data.get('category_id', '').strip()
+            word = data.get('word', '').strip()
+            translation = data.get('translation', '').strip()
+            example = data.get('example', '').strip()
+            explanation = data.get('explanation', '').strip()
+            difficulty = data.get('difficulty', 'medium')
+
+            if not category_id or not word or not translation:
+                self._send_response(400, {'error': 'Category, word and translation are required'})
+                return
+
+            # Verify category belongs to user
+            category = categories_collection.find_one({
+                '_id': ObjectId(category_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not category:
+                self._send_response(404, {'error': 'Category not found'})
+                return
+
+            # Check if flashcard with same word already exists in this category
+            existing = flashcards_collection.find_one({
+                'category_id': category_id,
+                'word': word
+            })
+
+            if existing:
+                self._send_response(400, {'error': 'Flashcard with this word already exists in this category'})
+                return
+
+            flashcard = Flashcard(
+                user_data['user_id'],
+                category_id,
+                word,
+                translation,
+                example,
+                explanation,
+                difficulty
+            )
+
+            result = flashcards_collection.insert_one(flashcard.to_dict())
+
+            flashcard_response = {
+                '_id': str(result.inserted_id),
+                'category_id': category_id,
+                'word': word,
+                'translation': translation,
+                'example': example,
+                'explanation': explanation,
+                'difficulty': difficulty,
+                'times_practiced': 0,
+                'times_correct': 0,
+                'created_at': flashcard.created_at.isoformat()
+            }
+
+            self._send_response(201, {
+                'message': 'Flashcard created successfully',
+                'flashcard': flashcard_response
+            })
+
+        except Exception as e:
+            print(f"Create flashcard error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_get_flashcards(self):
+        """Get all flashcards for current user"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            flashcards = list(flashcards_collection.find({'user_id': user_data['user_id']}))
+
+            flashcards_response = []
+            for card in flashcards:
+                flashcards_response.append({
+                    '_id': str(card['_id']),
+                    'category_id': card['category_id'],
+                    'word': card['word'],
+                    'translation': card['translation'],
+                    'example': card.get('example', ''),
+                    'explanation': card.get('explanation', ''),
+                    'difficulty': card.get('difficulty', 'medium'),
+                    'times_practiced': card.get('times_practiced', 0),
+                    'times_correct': card.get('times_correct', 0),
+                    'created_at': card['created_at'].isoformat()
+                })
+
+            self._send_response(200, {
+                'flashcards': flashcards_response,
+                'total': len(flashcards_response)
+            })
+
+        except Exception as e:
+            print(f"Get flashcards error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_get_flashcards_by_category(self, path):
+        """Get all flashcards in specific category"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            category_id = path.split('/')[3]
+
+            # Verify category belongs to user
+            category = categories_collection.find_one({
+                '_id': ObjectId(category_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not category:
+                self._send_response(404, {'error': 'Category not found'})
+                return
+
+            flashcards = list(flashcards_collection.find({'category_id': category_id}))
+
+            flashcards_response = []
+            for card in flashcards:
+                flashcards_response.append({
+                    '_id': str(card['_id']),
+                    'category_id': card['category_id'],
+                    'word': card['word'],
+                    'translation': card['translation'],
+                    'example': card.get('example', ''),
+                    'explanation': card.get('explanation', ''),
+                    'difficulty': card.get('difficulty', 'medium'),
+                    'times_practiced': card.get('times_practiced', 0),
+                    'times_correct': card.get('times_correct', 0),
+                    'created_at': card['created_at'].isoformat()
+                })
+
+            self._send_response(200, {
+                'flashcards': flashcards_response,
+                'total': len(flashcards_response)
+            })
+
+        except Exception as e:
+            print(f"Get flashcards by category error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_get_flashcard(self, path):
+        """Get single flashcard"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            flashcard_id = path.split('/')[3]
+
+            flashcard = flashcards_collection.find_one({
+                '_id': ObjectId(flashcard_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not flashcard:
+                self._send_response(404, {'error': 'Flashcard not found'})
+                return
+
+            flashcard_response = {
+                '_id': str(flashcard['_id']),
+                'category_id': flashcard['category_id'],
+                'word': flashcard['word'],
+                'translation': flashcard['translation'],
+                'example': flashcard.get('example', ''),
+                'explanation': flashcard.get('explanation', ''),
+                'difficulty': flashcard.get('difficulty', 'medium'),
+                'times_practiced': flashcard.get('times_practiced', 0),
+                'times_correct': flashcard.get('times_correct', 0),
+                'created_at': flashcard['created_at'].isoformat()
+            }
+
+            self._send_response(200, flashcard_response)
+
+        except Exception as e:
+            print(f"Get flashcard error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_update_flashcard(self, path):
+        """Update flashcard"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            flashcard_id = path.split('/')[3]
+            data = self._get_request_body()
+
+            # Verify flashcard belongs to user
+            flashcard = flashcards_collection.find_one({
+                '_id': ObjectId(flashcard_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not flashcard:
+                self._send_response(404, {'error': 'Flashcard not found'})
+                return
+
+            word = data.get('word', '').strip()
+            translation = data.get('translation', '').strip()
+            example = data.get('example', '').strip()
+            explanation = data.get('explanation', '').strip()
+            difficulty = data.get('difficulty', 'medium')
+
+            if not word or not translation:
+                self._send_response(400, {'error': 'Word and translation are required'})
+                return
+
+            flashcards_collection.update_one(
+                {'_id': ObjectId(flashcard_id)},
+                {
+                    '$set': {
+                        'word': word,
+                        'translation': translation,
+                        'example': example,
+                        'explanation': explanation,
+                        'difficulty': difficulty,
+                        'updated_at': datetime.utcnow()
+                    }
+                }
+            )
+
+            self._send_response(200, {
+                'message': 'Flashcard updated successfully',
+                'flashcard': {
+                    '_id': flashcard_id,
+                    'word': word,
+                    'translation': translation,
+                    'example': example,
+                    'explanation': explanation,
+                    'difficulty': difficulty
+                }
+            })
+
+        except Exception as e:
+            print(f"Update flashcard error: {e}")
+            self._send_response(500, {'error': 'Server error'})
+
+    def handle_delete_flashcard(self, path):
+        """Delete flashcard"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            flashcard_id = path.split('/')[3]
+
+            # Verify flashcard belongs to user
+            flashcard = flashcards_collection.find_one({
+                '_id': ObjectId(flashcard_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not flashcard:
+                self._send_response(404, {'error': 'Flashcard not found'})
+                return
+
+            flashcards_collection.delete_one({'_id': ObjectId(flashcard_id)})
+
+            self._send_response(200, {'message': 'Flashcard deleted successfully'})
+
+        except Exception as e:
+            print(f"Delete flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
 
