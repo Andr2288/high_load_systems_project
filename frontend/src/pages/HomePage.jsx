@@ -27,6 +27,7 @@ const HomePage = () => {
 
     const {
         flashcards,
+        isLoading: flashcardsLoading,
         isCreating: flashcardCreating,
         isDeleting: flashcardDeleting,
         fetchFlashcardsByCategory,
@@ -312,7 +313,11 @@ const HomePage = () => {
                             </button>
                         </div>
 
-                        {flashcards.length === 0 ? (
+                        {flashcardsLoading ? (
+                            <div className="flex items-center justify-center py-12">
+                                <Loader className="w-12 h-12 animate-spin text-blue-600" />
+                            </div>
+                        ) : flashcards.length === 0 ? (
                             <div className="text-center py-12">
                                 <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
                                 <p className="text-gray-500 mb-4">No flashcards yet</p>
