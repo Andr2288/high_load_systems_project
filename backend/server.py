@@ -1,4 +1,4 @@
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import HTTPServer, BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 from urllib.parse import urlparse
 from database import users_collection, user_settings_collection, categories_collection, flashcards_collection
@@ -7,9 +7,16 @@ from auth_utils import create_access_token, get_user_from_token
 from bson import ObjectId
 import re
 from datetime import datetime
+import threading
 
 
 class FlashEngHandler(BaseHTTPRequestHandler):
+
+    # Відключаємо логування для кожного запиту
+    def log_message(self, format, *args):
+        """Override to reduce console spam - only log errors"""
+        if args[1][0] in ['4', '5']:  # Only log 4xx and 5xx errors
+            print(f"{self.address_string()} - {format % args}")
 
     def _set_cors_headers(self):
         """Set CORS headers for all responses"""
@@ -19,18 +26,31 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Credentials', 'true')
 
     def _send_response(self, status_code, data):
-        """Send JSON response"""
-        self.send_response(status_code)
-        self.send_header('Content-type', 'application/json')
-        self._set_cors_headers()
-        self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        """Send JSON response with error handling"""
+        try:
+            self.send_response(status_code)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Length', len(json.dumps(data).encode()))
+            self._set_cors_headers()
+            self.end_headers()
+            self.wfile.write(json.dumps(data).encode())
+        except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError) as e:
+            # Client closed connection - this is normal, just continue
+            pass
+        except Exception as e:
+            print(f"❌ Error sending response: {e}")
 
     def _get_request_body(self):
         """Get and parse request body"""
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length)
-        return json.loads(body.decode('utf-8')) if body else {}
+        try:
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length == 0:
+                return {}
+            body = self.rfile.read(content_length)
+            return json.loads(body.decode('utf-8')) if body else {}
+        except Exception as e:
+            print(f"⚠️  Error parsing request body: {e}")
+            return {}
 
     def _get_token_from_header(self):
         """Extract token from Authorization header"""
@@ -55,119 +75,138 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
     def do_OPTIONS(self):
         """Handle preflight requests"""
-        self.send_response(200)
-        self._set_cors_headers()
-        self.end_headers()
+        try:
+            self.send_response(200)
+            self._set_cors_headers()
+            self.end_headers()
+        except:
+            pass
 
     def do_POST(self):
         """Handle POST requests"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
+        try:
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
 
-        # Auth endpoints
-        if path == '/api/auth/signup':
-            self.handle_signup()
-        elif path == '/api/auth/login':
-            self.handle_login()
+            # Auth endpoints
+            if path == '/api/auth/signup':
+                self.handle_signup()
+            elif path == '/api/auth/login':
+                self.handle_login()
 
-        # Admin endpoints
-        elif path == '/api/admin/users':
-            self.handle_admin_create_user()
+            # Admin endpoints
+            elif path == '/api/admin/users':
+                self.handle_admin_create_user()
 
-        # Category endpoints
-        elif path == '/api/categories':
-            self.handle_create_category()
+            # Category endpoints
+            elif path == '/api/categories':
+                self.handle_create_category()
 
-        # Flashcard endpoints
-        elif path == '/api/flashcards':
-            self.handle_create_flashcard()
+            # Flashcard endpoints
+            elif path == '/api/flashcards':
+                self.handle_create_flashcard()
 
-        else:
-            self._send_response(404, {'error': 'Endpoint not found'})
+            else:
+                self._send_response(404, {'error': 'Endpoint not found'})
+        except Exception as e:
+            print(f"❌ POST error: {e}")
+            self._send_response(500, {'error': 'Server error'})
 
     def do_GET(self):
         """Handle GET requests"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
+        try:
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
 
-        # Auth endpoints
-        if path == '/api/auth/check':
-            self.handle_check_auth()
-        elif path == '/api/auth/me':
-            self.handle_get_me()
+            # Auth endpoints
+            if path == '/api/auth/check':
+                self.handle_check_auth()
+            elif path == '/api/auth/me':
+                self.handle_get_me()
 
-        # Admin endpoints
-        elif path == '/api/admin/users':
-            self.handle_admin_get_users()
+            # Admin endpoints
+            elif path == '/api/admin/users':
+                self.handle_admin_get_users()
 
-        # Settings endpoints
-        elif path == '/api/settings':
-            self.handle_get_settings()
+            # Settings endpoints
+            elif path == '/api/settings':
+                self.handle_get_settings()
 
-        # Category endpoints
-        elif path == '/api/categories':
-            self.handle_get_categories()
-        elif path.startswith('/api/categories/') and '/flashcards' in path:
-            # GET /api/categories/:id/flashcards
-            self.handle_get_flashcards_by_category(path)
+            # Category endpoints
+            elif path == '/api/categories':
+                self.handle_get_categories()
+            elif path.startswith('/api/categories/') and '/flashcards' in path:
+                # GET /api/categories/:id/flashcards
+                self.handle_get_flashcards_by_category(path)
 
-        # Flashcard endpoints
-        elif path == '/api/flashcards':
-            self.handle_get_flashcards()
-        elif path.startswith('/api/flashcards/'):
-            # GET /api/flashcards/:id
-            self.handle_get_flashcard(path)
+            # Flashcard endpoints
+            elif path == '/api/flashcards':
+                self.handle_get_flashcards()
+            elif path.startswith('/api/flashcards/'):
+                # GET /api/flashcards/:id
+                self.handle_get_flashcard(path)
 
-        else:
-            self._send_response(404, {'error': 'Endpoint not found'})
+            else:
+                self._send_response(404, {'error': 'Endpoint not found'})
+        except Exception as e:
+            print(f"❌ GET error: {e}")
+            self._send_response(500, {'error': 'Server error'})
 
     def do_PUT(self):
         """Handle PUT requests"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
+        try:
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
 
-        # Admin endpoints
-        if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
-            self.handle_admin_toggle_user_status(path)
+            # Admin endpoints
+            if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
+                self.handle_admin_toggle_user_status(path)
 
-        # Settings endpoints
-        elif path == '/api/settings':
-            self.handle_update_settings()
+            # Settings endpoints
+            elif path == '/api/settings':
+                self.handle_update_settings()
 
-        # Category endpoints
-        elif path.startswith('/api/categories/'):
-            # PUT /api/categories/:id
-            self.handle_update_category(path)
+            # Category endpoints
+            elif path.startswith('/api/categories/'):
+                # PUT /api/categories/:id
+                self.handle_update_category(path)
 
-        # Flashcard endpoints
-        elif path.startswith('/api/flashcards/'):
-            # PUT /api/flashcards/:id
-            self.handle_update_flashcard(path)
+            # Flashcard endpoints
+            elif path.startswith('/api/flashcards/'):
+                # PUT /api/flashcards/:id
+                self.handle_update_flashcard(path)
 
-        else:
-            self._send_response(404, {'error': 'Endpoint not found'})
+            else:
+                self._send_response(404, {'error': 'Endpoint not found'})
+        except Exception as e:
+            print(f"❌ PUT error: {e}")
+            self._send_response(500, {'error': 'Server error'})
 
     def do_DELETE(self):
         """Handle DELETE requests"""
-        parsed_path = urlparse(self.path)
-        path = parsed_path.path
+        try:
+            parsed_path = urlparse(self.path)
+            path = parsed_path.path
 
-        # Admin endpoints
-        if path.startswith('/api/admin/users/'):
-            self.handle_admin_delete_user(path)
+            # Admin endpoints
+            if path.startswith('/api/admin/users/'):
+                self.handle_admin_delete_user(path)
 
-        # Category endpoints
-        elif path.startswith('/api/categories/'):
-            # DELETE /api/categories/:id
-            self.handle_delete_category(path)
+            # Category endpoints
+            elif path.startswith('/api/categories/'):
+                # DELETE /api/categories/:id
+                self.handle_delete_category(path)
 
-        # Flashcard endpoints
-        elif path.startswith('/api/flashcards/'):
-            # DELETE /api/flashcards/:id
-            self.handle_delete_flashcard(path)
+            # Flashcard endpoints
+            elif path.startswith('/api/flashcards/'):
+                # DELETE /api/flashcards/:id
+                self.handle_delete_flashcard(path)
 
-        else:
-            self._send_response(404, {'error': 'Endpoint not found'})
+            else:
+                self._send_response(404, {'error': 'Endpoint not found'})
+        except Exception as e:
+            print(f"❌ DELETE error: {e}")
+            self._send_response(500, {'error': 'Server error'})
 
     # ==================== AUTH HANDLERS ====================
 
@@ -222,7 +261,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Signup error: {e}")
+            print(f"❌ Signup error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_login(self):
@@ -273,7 +312,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Login error: {e}")
+            print(f"❌ Login error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_check_auth(self):
@@ -309,7 +348,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(200, user_response)
 
         except Exception as e:
-            print(f"Check auth error: {e}")
+            print(f"❌ Check auth error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_me(self):
@@ -369,7 +408,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Admin create user error: {e}")
+            print(f"❌ Admin create user error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_admin_get_users(self):
@@ -406,7 +445,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Admin get users error: {e}")
+            print(f"❌ Admin get users error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_admin_toggle_user_status(self, path):
@@ -448,7 +487,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Admin toggle status error: {e}")
+            print(f"❌ Admin toggle status error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_admin_delete_user(self, path):
@@ -484,7 +523,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Admin delete user error: {e}")
+            print(f"❌ Admin delete user error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     # ==================== SETTINGS HANDLERS ====================
@@ -523,7 +562,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(200, settings_response)
 
         except Exception as e:
-            print(f"Get settings error: {e}")
+            print(f"❌ Get settings error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_update_settings(self):
@@ -584,7 +623,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Update settings error: {e}")
+            print(f"❌ Update settings error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     # ==================== CATEGORY HANDLERS ====================
@@ -635,7 +674,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Create category error: {e}")
+            print(f"❌ Create category error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_categories(self):
@@ -668,7 +707,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'description': cat.get('description', ''),
                     'color': cat.get('color', '#3B82F6'),
                     'flashcard_count': flashcard_count,
-                    'is_default': cat.get('is_default', False),  # ← НОВЕ ПОЛЕ
+                    'is_default': cat.get('is_default', False),
                     'created_at': cat['created_at'].isoformat()
                 })
 
@@ -678,7 +717,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Get categories error: {e}")
+            print(f"❌ Get categories error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_update_category(self, path):
@@ -748,7 +787,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Update category error: {e}")
+            print(f"❌ Update category error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_delete_category(self, path):
@@ -784,7 +823,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(200, {'message': 'Category deleted successfully'})
 
         except Exception as e:
-            print(f"Delete category error: {e}")
+            print(f"❌ Delete category error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     # ==================== FLASHCARD HANDLERS ====================
@@ -861,7 +900,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Create flashcard error: {e}")
+            print(f"❌ Create flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_flashcards(self):
@@ -895,7 +934,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Get flashcards error: {e}")
+            print(f"❌ Get flashcards error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_flashcards_by_category(self, path):
@@ -908,14 +947,16 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             category_id = path.split('/')[3]
 
-            # Verify category belongs to user
-            category = categories_collection.find_one({
-                '_id': ObjectId(category_id),
-                'user_id': user_data['user_id']
-            })
+            # Check if category exists and if it's default or belongs to user
+            category = categories_collection.find_one({'_id': ObjectId(category_id)})
 
             if not category:
                 self._send_response(404, {'error': 'Category not found'})
+                return
+
+            # Allow access if it's a default category OR belongs to the user
+            if not category.get('is_default', False) and category.get('user_id') != user_data['user_id']:
+                self._send_response(403, {'error': 'Access denied'})
                 return
 
             flashcards = list(flashcards_collection.find({'category_id': category_id}))
@@ -932,6 +973,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'difficulty': card.get('difficulty', 'medium'),
                     'times_practiced': card.get('times_practiced', 0),
                     'times_correct': card.get('times_correct', 0),
+                    'is_default': card.get('is_default', False),
                     'created_at': card['created_at'].isoformat()
                 })
 
@@ -941,7 +983,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Get flashcards by category error: {e}")
+            print(f"❌ Get flashcards by category error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_flashcard(self, path):
@@ -979,7 +1021,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(200, flashcard_response)
 
         except Exception as e:
-            print(f"Get flashcard error: {e}")
+            print(f"❌ Get flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_update_flashcard(self, path):
@@ -1044,7 +1086,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             })
 
         except Exception as e:
-            print(f"Update flashcard error: {e}")
+            print(f"❌ Update flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     def handle_delete_flashcard(self, path):
@@ -1076,16 +1118,25 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(200, {'message': 'Flashcard deleted successfully'})
 
         except Exception as e:
-            print(f"Delete flashcard error: {e}")
+            print(f"❌ Delete flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
 
 def run_server(port=5001):
-    """Start HTTP server"""
+    """Start multithreaded HTTP server"""
     server_address = ('', port)
-    httpd = HTTPServer(server_address, FlashEngHandler)
-    print(f'✓ Server running on http://localhost:{port}')
-    httpd.serve_forever()
+
+    # Use ThreadingHTTPServer instead of HTTPServer
+    httpd = ThreadingHTTPServer(server_address, FlashEngHandler)
+
+    print(f'✅ Multithreaded server running on http://localhost:{port}')
+    print(f'📊 Active threads: {threading.active_count()}')
+
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print('\n🛑 Server stopped')
+        httpd.server_close()
 
 
 if __name__ == '__main__':
