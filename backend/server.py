@@ -639,17 +639,24 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             self._send_response(500, {'error': 'Server error'})
 
     def handle_get_categories(self):
-        """Get all categories for current user"""
+        """Get all categories for current user (including default categories)"""
         try:
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
                 return
 
-            categories = list(categories_collection.find({'user_id': user_data['user_id']}))
+            # Get user's personal categories
+            user_categories = list(categories_collection.find({'user_id': user_data['user_id']}))
+
+            # Get default system categories
+            default_categories = list(categories_collection.find({'is_default': True}))
+
+            # Combine both lists (default categories first, then user categories)
+            all_categories = default_categories + user_categories
 
             categories_response = []
-            for cat in categories:
+            for cat in all_categories:
                 # Count flashcards in this category
                 flashcard_count = flashcards_collection.count_documents({
                     'category_id': str(cat['_id'])
@@ -661,6 +668,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'description': cat.get('description', ''),
                     'color': cat.get('color', '#3B82F6'),
                     'flashcard_count': flashcard_count,
+                    'is_default': cat.get('is_default', False),  # ← НОВЕ ПОЛЕ
                     'created_at': cat['created_at'].isoformat()
                 })
 
@@ -692,6 +700,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             if not category:
                 self._send_response(404, {'error': 'Category not found'})
+                return
+
+            if category.get('is_default', False):
+                self._send_response(403, {'error': 'Cannot edit default category'})
                 return
 
             name = data.get('name', '').strip()
@@ -757,6 +769,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             if not category:
                 self._send_response(404, {'error': 'Category not found'})
+                return
+
+            if category.get('is_default', False):
+                self._send_response(403, {'error': 'Cannot delete default category'})
                 return
 
             # Delete all flashcards in this category
@@ -987,6 +1003,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self._send_response(404, {'error': 'Flashcard not found'})
                 return
 
+            if flashcard.get('is_default', False):
+                self._send_response(403, {'error': 'Cannot edit flashcard from default category'})
+                return
+
             word = data.get('word', '').strip()
             translation = data.get('translation', '').strip()
             example = data.get('example', '').strip()
@@ -1045,6 +1065,10 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             if not flashcard:
                 self._send_response(404, {'error': 'Flashcard not found'})
+                return
+
+            if flashcard.get('is_default', False):
+                self._send_response(403, {'error': 'Cannot delete flashcard from default category'})
                 return
 
             flashcards_collection.delete_one({'_id': ObjectId(flashcard_id)})
