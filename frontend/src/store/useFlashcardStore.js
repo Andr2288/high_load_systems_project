@@ -41,10 +41,12 @@ export const useFlashcardStore = create((set, get) => ({
             });
 
             set({ flashcards: res.data.flashcards });
+            return res.data.flashcards; // Return flashcards for use in components
         } catch (error) {
             console.error("Error fetching flashcards:", error);
             const errorMessage = error.response?.data?.error || "Failed to load flashcards";
             toast.error(errorMessage);
+            return []; // Return empty array on error
         } finally {
             set({ isLoading: false });
         }

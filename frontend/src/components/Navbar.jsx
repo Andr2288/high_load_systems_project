@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore.js";
-import { BookOpen, LogOut, User, Settings, Home, Shield, Users } from "lucide-react";
+import { BookOpen, LogOut, User, Settings, Home, Shield, Users, Dumbbell } from "lucide-react";
 
 const Navbar = () => {
     const { authUser, logout } = useAuthStore();
@@ -13,13 +13,19 @@ const Navbar = () => {
             path: "/home",
             icon: Home,
             label: "Home",
-            show: authUser?.role === 'user' // Тільки для звичайних користувачів
+            show: authUser?.role === 'user'
         },
         {
             path: "/home",
             icon: Users,
             label: "Users",
-            show: authUser?.role === 'admin' // Тільки для адмінів
+            show: authUser?.role === 'admin'
+        },
+        {
+            path: "/exercises",
+            icon: Dumbbell,
+            label: "Exercises",
+            show: authUser?.role === 'user'
         },
         {
             path: "/profile",

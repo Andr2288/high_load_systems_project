@@ -10,6 +10,7 @@ import LoginPage from "./pages/LoginPage.jsx";
 import SettingsPage from "./pages/SettingsPage.jsx";
 import ProfilePage from "./pages/ProfilePage.jsx";
 import LandingPage from "./pages/LandingPage.jsx";
+import ExercisesPage from "./pages/ExercisesPage.jsx";
 
 import { useAuthStore } from "./store/useAuthStore.js";
 import { useEffect } from "react";
@@ -71,6 +72,10 @@ const App = () => {
                     <Route
                         path="/settings"
                         element={authUser ? <SettingsPage /> : <Navigate to="/login" />}
+                    />
+                    <Route
+                        path="/exercises"
+                        element={authUser ? <ExercisesPage /> : <Navigate to="/login" />}
                     />
 
                     {/* Admin Only Routes */}
