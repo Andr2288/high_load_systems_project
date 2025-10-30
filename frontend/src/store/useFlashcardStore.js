@@ -70,6 +70,37 @@ export const useFlashcardStore = create((set, get) => ({
         }
     },
 
+    generateFlashcard: async (data) => {
+        set({ isCreating: true });
+        try {
+            const token = localStorage.getItem('token');
+
+            const loadingToast = toast.loading('🤖 AI is generating your flashcard...');
+
+            const res = await axiosInstance.post("/flashcards/generate", data, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            // Add new flashcard to list
+            set((state) => ({
+                flashcards: [...state.flashcards, res.data.flashcard]
+            }));
+
+            toast.dismiss(loadingToast);
+            toast.success("✨ Flashcard generated successfully!");
+            return res.data.flashcard;
+        } catch (error) {
+            console.error("Error generating flashcard:", error);
+            const errorMessage = error.response?.data?.error || "Failed to generate flashcard";
+            toast.error(errorMessage);
+            throw error;
+        } finally {
+            set({ isCreating: false });
+        }
+    },
+
     createFlashcard: async (data) => {
         set({ isCreating: true });
         try {

@@ -8,6 +8,7 @@ from bson import ObjectId
 import re
 from datetime import datetime
 import threading
+from ai_service import generate_complete_flashcard, generate_examples, regenerate_examples, translate_to_ukrainian, translate_sentence_to_ukrainian
 
 
 class FlashEngHandler(BaseHTTPRequestHandler):
@@ -105,6 +106,18 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             # Flashcard endpoints
             elif path == '/api/flashcards':
                 self.handle_create_flashcard()
+            elif path == '/api/flashcards/generate':
+                self.handle_generate_flashcard()
+
+            # AI endpoints
+            elif path == '/api/ai/generate-examples':
+                self.handle_ai_generate_examples()
+            elif path == '/api/ai/regenerate-examples':
+                self.handle_ai_regenerate_examples()
+            elif path == '/api/ai/translate':
+                self.handle_ai_translate()
+            elif path == '/api/ai/translate-sentence':
+                self.handle_ai_translate_sentence()
 
             else:
                 self._send_response(404, {'error': 'Endpoint not found'})
@@ -828,8 +841,96 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
     # ==================== FLASHCARD HANDLERS ====================
 
+    def handle_generate_flashcard(self):
+        """Generate complete flashcard using AI"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+            word = data.get('word', '').strip()
+            category_id = data.get('category_id', '').strip()
+
+            if not word or not category_id:
+                self._send_response(400, {'error': 'Word and category are required'})
+                return
+
+            # Verify category belongs to user
+            category = categories_collection.find_one({
+                '_id': ObjectId(category_id),
+                'user_id': user_data['user_id']
+            })
+
+            if not category:
+                self._send_response(404, {'error': 'Category not found'})
+                return
+
+            # Get user's English level from settings
+            settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
+            english_level = settings_doc.get('language_level', 'intermediate') if settings_doc else 'intermediate'
+
+            # Generate flashcard with AI
+            print(f"🤖 Generating flashcard for: {word} (level: {english_level})")
+            result = generate_complete_flashcard(word, english_level)
+
+            if not result["success"]:
+                self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
+                return
+
+            ai_data = result["data"]
+
+            # Create flashcard in database
+            flashcard = Flashcard(
+                user_data['user_id'],
+                category_id,
+                ai_data.get('text', word),
+                ai_data.get('translation', ''),
+                ai_data.get('examples', [''])[0] if ai_data.get('examples') else '',
+                ai_data.get('explanation', ''),
+                'medium'
+            )
+
+            flashcard_dict = flashcard.to_dict()
+            # Add AI-generated fields
+            flashcard_dict['transcription'] = ai_data.get('transcription', '')
+            flashcard_dict['short_description'] = ai_data.get('short_description', '')
+            flashcard_dict['examples'] = ai_data.get('examples', [])
+            flashcard_dict['notes'] = ai_data.get('notes', '')
+
+            db_result = flashcards_collection.insert_one(flashcard_dict)
+
+            flashcard_response = {
+                '_id': str(db_result.inserted_id),
+                'category_id': category_id,
+                'word': flashcard_dict['word'],
+                'translation': flashcard_dict['translation'],
+                'transcription': flashcard_dict.get('transcription', ''),
+                'short_description': flashcard_dict.get('short_description', ''),
+                'example': flashcard_dict.get('example', ''),
+                'examples': flashcard_dict.get('examples', []),
+                'explanation': flashcard_dict.get('explanation', ''),
+                'notes': flashcard_dict.get('notes', ''),
+                'difficulty': flashcard_dict['difficulty'],
+                'times_practiced': 0,
+                'times_correct': 0,
+                'created_at': flashcard.created_at.isoformat()
+            }
+
+            print(f"✅ Flashcard generated successfully: {word}")
+
+            self._send_response(201, {
+                'message': 'Flashcard generated successfully',
+                'flashcard': flashcard_response
+            })
+
+        except Exception as e:
+            print(f"❌ Generate flashcard error: {e}")
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
+
     def handle_create_flashcard(self):
-        """Create new flashcard"""
+        """Create new flashcard (manual creation)"""
         try:
             user_data = self._get_user_from_request()
             if not user_data:
@@ -920,8 +1021,12 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'category_id': card['category_id'],
                     'word': card['word'],
                     'translation': card['translation'],
+                    'transcription': card.get('transcription', ''),
+                    'short_description': card.get('short_description', ''),
                     'example': card.get('example', ''),
+                    'examples': card.get('examples', []),
                     'explanation': card.get('explanation', ''),
+                    'notes': card.get('notes', ''),
                     'difficulty': card.get('difficulty', 'medium'),
                     'times_practiced': card.get('times_practiced', 0),
                     'times_correct': card.get('times_correct', 0),
@@ -968,8 +1073,12 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'category_id': card['category_id'],
                     'word': card['word'],
                     'translation': card['translation'],
+                    'transcription': card.get('transcription', ''),
+                    'short_description': card.get('short_description', ''),
                     'example': card.get('example', ''),
+                    'examples': card.get('examples', []),
                     'explanation': card.get('explanation', ''),
+                    'notes': card.get('notes', ''),
                     'difficulty': card.get('difficulty', 'medium'),
                     'times_practiced': card.get('times_practiced', 0),
                     'times_correct': card.get('times_correct', 0),
@@ -1010,8 +1119,12 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'category_id': flashcard['category_id'],
                 'word': flashcard['word'],
                 'translation': flashcard['translation'],
+                'transcription': flashcard.get('transcription', ''),
+                'short_description': flashcard.get('short_description', ''),
                 'example': flashcard.get('example', ''),
+                'examples': flashcard.get('examples', []),
                 'explanation': flashcard.get('explanation', ''),
+                'notes': flashcard.get('notes', ''),
                 'difficulty': flashcard.get('difficulty', 'medium'),
                 'times_practiced': flashcard.get('times_practiced', 0),
                 'times_correct': flashcard.get('times_correct', 0),
@@ -1120,6 +1233,144 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         except Exception as e:
             print(f"❌ Delete flashcard error: {e}")
             self._send_response(500, {'error': 'Server error'})
+
+    # ==================== AI HANDLERS ====================
+
+    def handle_ai_generate_examples(self):
+        """Generate examples for a word using AI"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+            word = data.get('word', '').strip()
+
+            if not word:
+                self._send_response(400, {'error': 'Word is required'})
+                return
+
+            # Get user's English level
+            settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
+            english_level = settings_doc.get('language_level', 'intermediate') if settings_doc else 'intermediate'
+
+            print(f"🤖 Generating examples for: {word}")
+            result = generate_examples(word, english_level)
+
+            if not result["success"]:
+                self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
+                return
+
+            print(f"✅ Examples generated: {result['data']}")
+
+            self._send_response(200, {
+                'examples': result["data"]
+            })
+
+        except Exception as e:
+            print(f"❌ AI generate examples error: {e}")
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
+
+    def handle_ai_regenerate_examples(self):
+        """Regenerate examples with more variety"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+            word = data.get('word', '').strip()
+
+            if not word:
+                self._send_response(400, {'error': 'Word is required'})
+                return
+
+            # Get user's English level
+            settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
+            english_level = settings_doc.get('language_level', 'intermediate') if settings_doc else 'intermediate'
+
+            print(f"🤖 Regenerating examples for: {word}")
+            result = regenerate_examples(word, english_level)
+
+            if not result["success"]:
+                self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
+                return
+
+            print(f"✅ Examples regenerated: {result['data']}")
+
+            self._send_response(200, {
+                'examples': result["data"]
+            })
+
+        except Exception as e:
+            print(f"❌ AI regenerate examples error: {e}")
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
+
+    def handle_ai_translate(self):
+        """Translate English word to Ukrainian"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+            text = data.get('text', '').strip()
+
+            if not text:
+                self._send_response(400, {'error': 'Text is required'})
+                return
+
+            print(f"🤖 Translating: {text}")
+            result = translate_to_ukrainian(text)
+
+            if not result["success"]:
+                self._send_response(500, {'error': f'Translation failed: {result.get("error", "Unknown error")}'})
+                return
+
+            print(f"✅ Translation: {result['data']}")
+
+            self._send_response(200, {
+                'translation': result["data"]
+            })
+
+        except Exception as e:
+            print(f"❌ AI translate error: {e}")
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
+
+    def handle_ai_translate_sentence(self):
+        """Translate English sentence to Ukrainian"""
+        try:
+            user_data = self._get_user_from_request()
+            if not user_data:
+                self._send_response(401, {'error': 'Unauthorized'})
+                return
+
+            data = self._get_request_body()
+            text = data.get('text', '').strip()
+
+            if not text:
+                self._send_response(400, {'error': 'Text is required'})
+                return
+
+            print(f"🤖 Translating sentence: {text}")
+            result = translate_sentence_to_ukrainian(text)
+
+            if not result["success"]:
+                self._send_response(500, {'error': f'Translation failed: {result.get("error", "Unknown error")}'})
+                return
+
+            print(f"✅ Translation: {result['data']}")
+
+            self._send_response(200, {
+                'translation': result["data"]
+            })
+
+        except Exception as e:
+            print(f"❌ AI translate sentence error: {e}")
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
 
 def run_server(port=5001):

@@ -63,7 +63,7 @@ cd backend
 # Встановити залежності
 pip install -r requirements.txt
 
-# Створити файл .env з вашими даними
+# Створити файл ..env з вашими даними
 # MONGODB_URI=mongodb+srv://...
 # JWT_SECRET=your-secret-key
 

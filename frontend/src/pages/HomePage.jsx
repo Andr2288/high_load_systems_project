@@ -10,7 +10,8 @@ import {
     Trash2,
     X,
     Loader,
-    Lock
+    Lock,
+    Sparkles
 } from "lucide-react";
 
 const HomePage = () => {
@@ -33,6 +34,7 @@ const HomePage = () => {
         isDeleting: flashcardDeleting,
         fetchFlashcardsByCategory,
         createFlashcard,
+        generateFlashcard,
         updateFlashcard,
         deleteFlashcard
     } = useFlashcardStore();
@@ -51,10 +53,7 @@ const HomePage = () => {
 
     const [flashcardForm, setFlashcardForm] = useState({
         word: "",
-        translation: "",
-        example: "",
-        explanation: "",
-        difficulty: "medium"
+        useAI: true  // Default to AI generation
     });
 
     useEffect(() => {
@@ -126,18 +125,23 @@ const HomePage = () => {
     const handleCreateFlashcard = async (e) => {
         e.preventDefault();
         try {
-            await createFlashcard({
-                ...flashcardForm,
-                category_id: selectedCategory._id
-            });
+            if (flashcardForm.useAI) {
+                // AI Generation
+                await generateFlashcard({
+                    word: flashcardForm.word,
+                    category_id: selectedCategory._id
+                });
+            } else {
+                // Manual creation (not used for now)
+                await createFlashcard({
+                    word: flashcardForm.word,
+                    translation: "",
+                    category_id: selectedCategory._id
+                });
+            }
+
             setShowFlashcardModal(false);
-            setFlashcardForm({
-                word: "",
-                translation: "",
-                example: "",
-                explanation: "",
-                difficulty: "medium"
-            });
+            setFlashcardForm({ word: "", useAI: true });
         } catch (error) {
             // Error handled in store
         }
@@ -149,13 +153,7 @@ const HomePage = () => {
             await updateFlashcard(editingFlashcard._id, flashcardForm);
             setShowFlashcardModal(false);
             setEditingFlashcard(null);
-            setFlashcardForm({
-                word: "",
-                translation: "",
-                example: "",
-                explanation: "",
-                difficulty: "medium"
-            });
+            setFlashcardForm({ word: "", useAI: true });
         } catch (error) {
             // Error handled in store
         }
@@ -175,23 +173,14 @@ const HomePage = () => {
         setEditingFlashcard(flashcard);
         setFlashcardForm({
             word: flashcard.word,
-            translation: flashcard.translation,
-            example: flashcard.example || "",
-            explanation: flashcard.explanation || "",
-            difficulty: flashcard.difficulty
+            useAI: false
         });
         setShowFlashcardModal(true);
     };
 
     const openCreateFlashcardModal = () => {
         setEditingFlashcard(null);
-        setFlashcardForm({
-            word: "",
-            translation: "",
-            example: "",
-            explanation: "",
-            difficulty: "medium"
-        });
+        setFlashcardForm({ word: "", useAI: true });
         setShowFlashcardModal(true);
     };
 
@@ -356,10 +345,10 @@ const HomePage = () => {
                             {!selectedCategory.is_default && (
                                 <button
                                     onClick={openCreateFlashcardModal}
-                                    className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors"
+                                    className="flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-lg transition-colors"
                                 >
-                                    <Plus className="w-5 h-5" />
-                                    <span>New Flashcard</span>
+                                    <Sparkles className="w-5 h-5" />
+                                    <span>Generate Flashcard</span>
                                 </button>
                             )}
                         </div>
@@ -396,9 +385,9 @@ const HomePage = () => {
                                                 <p className="text-gray-600 mb-2">
                                                     {flashcard.translation}
                                                 </p>
-                                                {flashcard.example && (
-                                                    <p className="text-sm text-gray-500 italic">
-                                                        "{flashcard.example}"
+                                                {flashcard.short_description && (
+                                                    <p className="text-sm text-gray-500 italic mb-2">
+                                                        {flashcard.short_description}
                                                     </p>
                                                 )}
                                             </div>
@@ -530,119 +519,93 @@ const HomePage = () => {
                 </div>
             )}
 
-            {/* Flashcard Modal */}
+            {/* Flashcard Modal - Simple, just word input */}
             {showFlashcardModal && (
                 <div
                     className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
                     onClick={(e) => {
-                        if (e.target === e.currentTarget) {
+                        if (e.target === e.currentTarget && !flashcardCreating) {
                             setShowFlashcardModal(false);
                             setEditingFlashcard(null);
                         }
                     }}
                 >
-                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl p-8 max-h-[90vh] overflow-y-auto">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-8">
                         <div className="flex items-center justify-between mb-6">
-                            <h2 className="text-2xl font-bold text-gray-900">
-                                {editingFlashcard ? 'Edit Flashcard' : 'New Flashcard'}
-                            </h2>
+                            <div className="flex items-center space-x-3">
+                                <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                    <Sparkles className="w-6 h-6 text-white" />
+                                </div>
+                                <div>
+                                    <h2 className="text-2xl font-bold text-gray-900">
+                                        {editingFlashcard ? 'Edit Flashcard' : 'Generate Flashcard'}
+                                    </h2>
+                                    <p className="text-sm text-gray-600">AI will create everything for you</p>
+                                </div>
+                            </div>
                             <button
                                 onClick={() => {
-                                    setShowFlashcardModal(false);
-                                    setEditingFlashcard(null);
+                                    if (!flashcardCreating) {
+                                        setShowFlashcardModal(false);
+                                        setEditingFlashcard(null);
+                                    }
                                 }}
-                                className="text-gray-500 hover:text-gray-700"
+                                disabled={flashcardCreating}
+                                className="text-gray-500 hover:text-gray-700 disabled:opacity-50"
                             >
                                 <X className="w-6 h-6" />
                             </button>
                         </div>
 
-                        <form onSubmit={editingFlashcard ? handleUpdateFlashcard : handleCreateFlashcard} className="space-y-4">
+                        <form onSubmit={handleCreateFlashcard} className="space-y-6">
                             <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Word/Phrase *
+                                    Enter word or phrase *
                                 </label>
                                 <input
                                     type="text"
                                     value={flashcardForm.word}
                                     onChange={(e) => setFlashcardForm({ ...flashcardForm, word: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-lg"
+                                    placeholder="e.g., opportunity, to be, happy"
                                     required
+                                    disabled={flashcardCreating}
+                                    autoFocus
                                 />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Translation *
-                                </label>
-                                <input
-                                    type="text"
-                                    value={flashcardForm.translation}
-                                    onChange={(e) => setFlashcardForm({ ...flashcardForm, translation: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    required
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Example
-                                </label>
-                                <textarea
-                                    value={flashcardForm.example}
-                                    onChange={(e) => setFlashcardForm({ ...flashcardForm, example: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    rows="2"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Explanation
-                                </label>
-                                <textarea
-                                    value={flashcardForm.explanation}
-                                    onChange={(e) => setFlashcardForm({ ...flashcardForm, explanation: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                    rows="3"
-                                />
-                            </div>
-
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-2">
-                                    Difficulty
-                                </label>
-                                <select
-                                    value={flashcardForm.difficulty}
-                                    onChange={(e) => setFlashcardForm({ ...flashcardForm, difficulty: e.target.value })}
-                                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                >
-                                    <option value="easy">Easy</option>
-                                    <option value="medium">Medium</option>
-                                    <option value="hard">Hard</option>
-                                </select>
+                                <p className="text-xs text-gray-500 mt-2">
+                                    💡 AI will generate translation, transcription, explanation, and examples
+                                </p>
                             </div>
 
                             <div className="flex space-x-4 pt-4">
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setShowFlashcardModal(false);
-                                        setEditingFlashcard(null);
+                                        if (!flashcardCreating) {
+                                            setShowFlashcardModal(false);
+                                            setEditingFlashcard(null);
+                                        }
                                     }}
-                                    className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                    disabled={flashcardCreating}
+                                    className="flex-1 px-4 py-3 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={flashcardCreating}
-                                    className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors flex items-center justify-center"
+                                    disabled={flashcardCreating || !flashcardForm.word.trim()}
+                                    className="flex-1 px-4 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:from-gray-400 disabled:to-gray-400 text-white rounded-lg transition-colors flex items-center justify-center disabled:cursor-not-allowed font-semibold"
                                 >
                                     {flashcardCreating ? (
-                                        <Loader className="w-5 h-5 animate-spin" />
+                                        <>
+                                            <Loader className="w-5 h-5 animate-spin mr-2" />
+                                            Generating...
+                                        </>
                                     ) : (
-                                        editingFlashcard ? 'Update' : 'Create'
+                                        <>
+                                            <Sparkles className="w-5 h-5 mr-2" />
+                                            Generate
+                                        </>
                                     )}
                                 </button>
                             </div>
