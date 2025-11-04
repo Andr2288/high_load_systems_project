@@ -24,16 +24,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         environment = os.getenv('ENVIRONMENT', 'development')
 
         if environment == 'production':
-            # Production CORS - specific domain
-            allowed_origin = os.getenv('FRONTEND_URL', 'https://flasheng-production.onrender.com')
-        elif environment == 'sandbox':
-            # Sandbox CORS - specific domain
-            allowed_origin = os.getenv('FRONTEND_URL', 'https://flasheng-sandbox.onrender.com')
+            # Production CORS - specific domains
+            frontend_url = os.getenv('FRONTEND_URL', 'https://flasheng-frontend.onrender.com')
+            self.send_header('Access-Control-Allow-Origin', frontend_url)
         else:
             # Development CORS - localhost
-            allowed_origin = 'http://localhost:5173'
+            self.send_header('Access-Control-Allow-Origin', 'http://localhost:5173')
 
-        self.send_header('Access-Control-Allow-Origin', allowed_origin)
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'Content-Type, Authorization')
         self.send_header('Access-Control-Allow-Credentials', 'true')
@@ -269,7 +266,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'branch': 'master' if environment == 'production' else 'develop',
                 'features': {
                     'ai_generation': True,
-                    'exercises': environment != 'production',  # Exercises only in sandbox
+                    'exercises': True,
                     'admin_panel': True
                 },
                 'version': '1.0.0',
@@ -1406,7 +1403,7 @@ def run_server():
     port = int(os.getenv('PORT', 5001))
     environment = os.getenv('ENVIRONMENT', 'development')
 
-    server_address = ('0.0.0.0', port)  # Listen on all interfaces for production
+    server_address = ('0.0.0.0', port)
     httpd = ThreadingHTTPServer(server_address, FlashEngHandler)
 
     print(f'✅ FlashEng Server starting...')

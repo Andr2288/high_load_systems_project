@@ -1,20 +1,15 @@
 import axios from "axios";
 
-// Detect environment
+// Detect environment and API URL
 const getBaseURL = () => {
     // Check if we're in browser environment
     if (typeof window !== 'undefined') {
         const hostname = window.location.hostname;
         const protocol = window.location.protocol;
 
-        // Production environment
-        if (hostname.includes('flasheng-production')) {
-            return 'https://flasheng-production.onrender.com/api';
-        }
-
-        // Sandbox environment
-        if (hostname.includes('flasheng-sandbox')) {
-            return 'https://flasheng-sandbox.onrender.com/api';
+        // Production environment (Render)
+        if (hostname.includes('flasheng-frontend')) {
+            return 'https://flasheng-backend.onrender.com/api';
         }
 
         // Local development
@@ -22,8 +17,8 @@ const getBaseURL = () => {
             return 'http://localhost:5001/api';
         }
 
-        // Fallback for other domains
-        return `${protocol}//${hostname}/api`;
+        // Fallback for other custom domains
+        return `${protocol}//${hostname.replace('frontend', 'backend')}/api`;
     }
 
     // Server-side rendering fallback
