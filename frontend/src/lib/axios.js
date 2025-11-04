@@ -1,28 +1,7 @@
 import axios from "axios";
 
-// Detect environment and API URL
 const getBaseURL = () => {
-    // Check if we're in browser environment
-    if (typeof window !== 'undefined') {
-        const hostname = window.location.hostname;
-        const protocol = window.location.protocol;
-
-        // Production environment - ваш конкретний backend URL
-        if (hostname.includes('high-load-systems-project-1.onrender.com')) {
-            return 'https://high-load-systems-project.onrender.com/api';
-        }
-
-        // Local development
-        if (hostname === 'localhost' || hostname === '127.0.0.1') {
-            return 'http://localhost:5001/api';
-        }
-
-        // Fallback для інших доменів
-        return 'https://high-load-systems-project.onrender.com/api';
-    }
-
-    // Server-side rendering fallback
-    return 'http://localhost:5001/api';
+    return import.meta.env.VITE_API_URL || 'https://high-load-systems-project.onrender.com/api';
 };
 
 export const axiosInstance = axios.create({
