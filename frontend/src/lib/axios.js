@@ -7,9 +7,9 @@ const getBaseURL = () => {
         const hostname = window.location.hostname;
         const protocol = window.location.protocol;
 
-        // Production environment (Render)
-        if (hostname.includes('flasheng-frontend')) {
-            return 'https://flasheng-backend.onrender.com/api';
+        // Production environment - ваш конкретний backend URL
+        if (hostname.includes('high-load-systems-project-1.onrender.com')) {
+            return 'https://high-load-systems-project.onrender.com/api';
         }
 
         // Local development
@@ -17,8 +17,8 @@ const getBaseURL = () => {
             return 'http://localhost:5001/api';
         }
 
-        // Fallback for other custom domains
-        return `${protocol}//${hostname.replace('frontend', 'backend')}/api`;
+        // Fallback для інших доменів
+        return 'https://high-load-systems-project.onrender.com/api';
     }
 
     // Server-side rendering fallback
@@ -38,7 +38,7 @@ export const axiosInstance = axios.create({
 axiosInstance.interceptors.request.use(
     (config) => {
         if (process.env.NODE_ENV === 'development') {
-            console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.url}`);
+            console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
         }
         return config;
     },
@@ -57,9 +57,7 @@ axiosInstance.interceptors.response.use(
         return response;
     },
     (error) => {
-        if (process.env.NODE_ENV === 'development') {
-            console.error(`❌ API Error: ${error.response?.status} ${error.config?.url}`, error.response?.data);
-        }
+        console.error(`❌ API Error: ${error.response?.status} ${error.config?.url}`, error.response?.data);
 
         // Handle common errors
         if (error.response?.status === 401) {
