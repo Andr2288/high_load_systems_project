@@ -1,13 +1,19 @@
 import axios from "axios";
 
 const getBaseURL = () => {
-    return import.meta.env.VITE_API_URL || 'https://high-load-systems-project.onrender.com/api';
+    // Production - use environment variable or default production URL
+    if (import.meta.env.MODE === 'production') {
+        return import.meta.env.VITE_API_URL || 'https://high-load-systems-project.onrender.com/api';
+    }
+
+    // Development - use local server
+    return import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
 };
 
 export const axiosInstance = axios.create({
     baseURL: getBaseURL(),
     withCredentials: true,
-    timeout: 30000, // 30 seconds timeout
+    timeout: 30000, // 30 seconds timeout for slow Render servers
     headers: {
         'Content-Type': 'application/json',
     }
@@ -16,7 +22,7 @@ export const axiosInstance = axios.create({
 // Request interceptor for debugging
 axiosInstance.interceptors.request.use(
     (config) => {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.MODE === 'development') {
             console.log(`🚀 API Request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
         }
         return config;
@@ -30,7 +36,7 @@ axiosInstance.interceptors.request.use(
 // Response interceptor for error handling
 axiosInstance.interceptors.response.use(
     (response) => {
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.MODE === 'development') {
             console.log(`✅ API Response: ${response.status} ${response.config.url}`);
         }
         return response;
