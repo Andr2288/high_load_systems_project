@@ -9,26 +9,30 @@ from bson import ObjectId
 import re
 from datetime import datetime
 import threading
+import traceback
 from ai_service import generate_complete_flashcard, generate_examples, regenerate_examples, translate_to_ukrainian, translate_sentence_to_ukrainian
 
 
 class FlashEngHandler(BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
-        """Override to reduce console spam - only log errors"""
-        if args[1][0] in ['4', '5']:  # Only log 4xx and 5xx errors
-            print(f"{self.address_string()} - {format % args}")
+        """Override to add more detailed logging"""
+        print(f"🌐 {self.address_string()} - {format % args}")
 
     def _set_cors_headers(self):
         """Set CORS headers for all responses"""
         environment = os.getenv('ENVIRONMENT', 'development')
 
+        print(f"🔧 Setting CORS headers for environment: {environment}")
+
         if environment == 'production':
             # Production CORS - specific domains
-            frontend_url = os.getenv('FRONTEND_URL', 'https://flasheng-frontend.onrender.com')
+            frontend_url = os.getenv('FRONTEND_URL', 'https://roaring-sherbet-285aee.netlify.app')
+            print(f"🔧 Production CORS - Frontend URL: {frontend_url}")
             self.send_header('Access-Control-Allow-Origin', frontend_url)
         else:
             # Development CORS - localhost
+            print("🔧 Development CORS - allowing localhost:5173")
             self.send_header('Access-Control-Allow-Origin', 'http://localhost:5173')
 
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
@@ -38,64 +42,90 @@ class FlashEngHandler(BaseHTTPRequestHandler):
     def _send_response(self, status_code, data):
         """Send JSON response with error handling"""
         try:
+            json_data = json.dumps(data, ensure_ascii=False)
+            print(f"📤 Sending response: {status_code} - {json_data[:200]}...")
+
             self.send_response(status_code)
-            self.send_header('Content-type', 'application/json')
-            self.send_header('Content-Length', len(json.dumps(data).encode()))
+            self.send_header('Content-type', 'application/json; charset=utf-8')
+            self.send_header('Content-Length', len(json_data.encode('utf-8')))
             self._set_cors_headers()
             self.end_headers()
-            self.wfile.write(json.dumps(data).encode())
+            self.wfile.write(json_data.encode('utf-8'))
         except (ConnectionAbortedError, BrokenPipeError, ConnectionResetError, OSError) as e:
-            pass
+            print(f"⚠️ Connection error: {e}")
         except Exception as e:
             print(f"❌ Error sending response: {e}")
+            print(traceback.format_exc())
 
     def _get_request_body(self):
         """Get and parse request body"""
         try:
             content_length = int(self.headers.get('Content-Length', 0))
+            print(f"📥 Request body length: {content_length}")
+
             if content_length == 0:
                 return {}
+
             body = self.rfile.read(content_length)
-            return json.loads(body.decode('utf-8')) if body else {}
+            body_str = body.decode('utf-8')
+            print(f"📥 Request body: {body_str[:200]}...")
+
+            return json.loads(body_str) if body_str else {}
         except Exception as e:
-            print(f"⚠️  Error parsing request body: {e}")
+            print(f"❌ Error parsing request body: {e}")
+            print(traceback.format_exc())
             return {}
 
     def _get_token_from_header(self):
         """Extract token from Authorization header"""
         auth_header = self.headers.get('Authorization', '')
+        print(f"🔐 Auth header: {auth_header[:50]}...")
+
         if auth_header.startswith('Bearer '):
-            return auth_header[7:]
+            token = auth_header[7:]
+            print(f"🔐 Extracted token: {token[:20]}...")
+            return token
         return None
 
     def _verify_admin(self, token):
         """Check if user is admin"""
         user_data = get_user_from_token(token)
         if user_data and user_data['role'] == 'admin':
+            print(f"✅ Admin verified: {user_data['email']}")
             return user_data
+        print("❌ Admin verification failed")
         return None
 
     def _get_user_from_request(self):
         """Get authenticated user from request"""
         token = self._get_token_from_header()
         if not token:
+            print("❌ No token found in request")
             return None
-        return get_user_from_token(token)
+
+        user_data = get_user_from_token(token)
+        if user_data:
+            print(f"✅ User authenticated: {user_data['email']}")
+        else:
+            print("❌ Token verification failed")
+        return user_data
 
     def do_OPTIONS(self):
         """Handle preflight requests"""
         try:
+            print("🔄 Handling OPTIONS request")
             self.send_response(200)
             self._set_cors_headers()
             self.end_headers()
-        except:
-            pass
+        except Exception as e:
+            print(f"❌ OPTIONS error: {e}")
 
     def do_GET(self):
         """Handle GET requests"""
         try:
             parsed_path = urlparse(self.path)
             path = parsed_path.path
+            print(f"📨 GET request to: {path}")
 
             # Health check endpoint
             if path == '/health' or path == '/api/health':
@@ -132,16 +162,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self.handle_get_flashcard(path)
 
             else:
-                self._send_response(404, {'error': 'Endpoint not found'})
+                print(f"❌ Endpoint not found: {path}")
+                self._send_response(404, {'error': f'Endpoint not found: {path}'})
+
         except Exception as e:
             print(f"❌ GET error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def do_POST(self):
         """Handle POST requests"""
         try:
             parsed_path = urlparse(self.path)
             path = parsed_path.path
+            print(f"📨 POST request to: {path}")
 
             # Auth endpoints
             if path == '/api/auth/signup':
@@ -174,16 +208,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self.handle_ai_translate_sentence()
 
             else:
-                self._send_response(404, {'error': 'Endpoint not found'})
+                print(f"❌ Endpoint not found: {path}")
+                self._send_response(404, {'error': f'Endpoint not found: {path}'})
+
         except Exception as e:
             print(f"❌ POST error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def do_PUT(self):
         """Handle PUT requests"""
         try:
             parsed_path = urlparse(self.path)
             path = parsed_path.path
+            print(f"📨 PUT request to: {path}")
 
             # Admin endpoints
             if path.startswith('/api/admin/users/') and path.endswith('/toggle-status'):
@@ -202,16 +240,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self.handle_update_flashcard(path)
 
             else:
-                self._send_response(404, {'error': 'Endpoint not found'})
+                print(f"❌ Endpoint not found: {path}")
+                self._send_response(404, {'error': f'Endpoint not found: {path}'})
+
         except Exception as e:
             print(f"❌ PUT error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def do_DELETE(self):
         """Handle DELETE requests"""
         try:
             parsed_path = urlparse(self.path)
             path = parsed_path.path
+            print(f"📨 DELETE request to: {path}")
 
             # Admin endpoints
             if path.startswith('/api/admin/users/'):
@@ -226,17 +268,22 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 self.handle_delete_flashcard(path)
 
             else:
-                self._send_response(404, {'error': 'Endpoint not found'})
+                print(f"❌ Endpoint not found: {path}")
+                self._send_response(404, {'error': f'Endpoint not found: {path}'})
+
         except Exception as e:
             print(f"❌ DELETE error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_health_check(self):
         """Health check endpoint for deployment monitoring"""
         try:
+            print("🩺 Health check requested")
             # Test database connection
             from database import client
             client.admin.command('ping')
+            print("✅ Database connection OK")
 
             environment = os.getenv('ENVIRONMENT', 'development')
 
@@ -250,6 +297,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             self._send_response(200, health_data)
         except Exception as e:
+            print(f"❌ Health check failed: {e}")
             self._send_response(503, {
                 'status': 'unhealthy',
                 'error': str(e),
@@ -260,9 +308,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
         """Get environment information"""
         try:
             environment = os.getenv('ENVIRONMENT', 'development')
+            frontend_url = os.getenv('FRONTEND_URL', 'not set')
+
+            print(f"ℹ️ Environment info requested - ENV: {environment}, FRONTEND_URL: {frontend_url}")
 
             info = {
                 'environment': environment,
+                'frontend_url': frontend_url,
                 'branch': 'master' if environment == 'production' else 'develop',
                 'features': {
                     'ai_generation': True,
@@ -275,6 +327,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             self._send_response(200, info)
         except Exception as e:
+            print(f"❌ Environment info error: {e}")
             self._send_response(500, {'error': 'Server error'})
 
     # ==================== AUTH HANDLERS ====================
@@ -282,36 +335,49 @@ class FlashEngHandler(BaseHTTPRequestHandler):
     def handle_signup(self):
         """Handle user registration"""
         try:
+            print("📝 Signup request received")
             data = self._get_request_body()
 
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
             full_name = data.get('fullName', '').strip()
 
+            print(f"📝 Signup data - Email: {email}, Name: {full_name}")
+
             if not email or not password or not full_name:
+                print("❌ Missing required fields")
                 self._send_response(400, {'error': 'All fields are required'})
                 return
 
             email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
             if not re.match(email_regex, email):
+                print("❌ Invalid email format")
                 self._send_response(400, {'error': 'Invalid email format'})
                 return
 
             if len(password) < 6:
+                print("❌ Password too short")
                 self._send_response(400, {'error': 'Password must be at least 6 characters'})
                 return
 
-            if users_collection.find_one({'email': email}):
+            existing_user = users_collection.find_one({'email': email})
+            if existing_user:
+                print("❌ User already exists")
                 self._send_response(400, {'error': 'User already exists'})
                 return
 
+            print("✅ Creating new user")
             user = User(full_name, email, password, role='user')
             result = users_collection.insert_one(user.to_dict())
+            print(f"✅ User created with ID: {result.inserted_id}")
 
+            # Create default settings
             settings = UserSettings(str(result.inserted_id))
             user_settings_collection.insert_one(settings.to_dict())
+            print("✅ Default settings created")
 
             token = create_access_token(result.inserted_id, email, 'user')
+            print(f"✅ Token created: {token[:20]}...")
 
             user_response = {
                 '_id': str(result.inserted_id),
@@ -330,39 +396,53 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Signup error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_login(self):
         """Handle user login"""
         try:
+            print("🔐 Login request received")
             data = self._get_request_body()
 
             email = data.get('email', '').strip().lower()
             password = data.get('password', '')
 
+            print(f"🔐 Login attempt - Email: {email}")
+
             if not email or not password:
+                print("❌ Missing email or password")
                 self._send_response(400, {'error': 'Email and password are required'})
                 return
 
+            print("🔍 Looking for user in database")
             user_doc = users_collection.find_one({'email': email})
 
             if not user_doc:
+                print("❌ User not found")
                 self._send_response(401, {'error': 'Invalid credentials'})
                 return
 
+            print(f"✅ User found: {user_doc['full_name']}")
+
             if not user_doc.get('is_active', True):
+                print("❌ Account is deactivated")
                 self._send_response(403, {'error': 'Account is deactivated'})
                 return
 
+            print("🔒 Verifying password")
             if not User.verify_password(password, user_doc['password']):
+                print("❌ Invalid password")
                 self._send_response(401, {'error': 'Invalid credentials'})
                 return
 
+            print("✅ Password verified, creating token")
             token = create_access_token(
                 user_doc['_id'],
                 user_doc['email'],
                 user_doc['role']
             )
+            print(f"✅ Token created: {token[:20]}...")
 
             user_response = {
                 '_id': str(user_doc['_id']),
@@ -373,6 +453,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'created_at': user_doc.get('created_at').isoformat() if user_doc.get('created_at') else None
             }
 
+            print("✅ Login successful")
             self._send_response(200, {
                 'message': 'Login successful',
                 'user': user_response,
@@ -381,26 +462,32 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Login error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_check_auth(self):
         """Check if user is authenticated"""
         try:
+            print("🔍 Auth check requested")
             token = self._get_token_from_header()
 
             if not token:
+                print("❌ No token provided")
                 self._send_response(401, {'error': 'No token provided'})
                 return
 
             user_data = get_user_from_token(token)
 
             if not user_data:
+                print("❌ Invalid token")
                 self._send_response(401, {'error': 'Invalid token'})
                 return
 
+            print(f"🔍 Looking for user: {user_data['user_id']}")
             user_doc = users_collection.find_one({'_id': ObjectId(user_data['user_id'])})
 
             if not user_doc:
+                print("❌ User not found in database")
                 self._send_response(401, {'error': 'User not found'})
                 return
 
@@ -413,11 +500,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'created_at': user_doc.get('created_at').isoformat() if user_doc.get('created_at') else None
             }
 
+            print("✅ Auth check successful")
             self._send_response(200, user_response)
 
         except Exception as e:
             print(f"❌ Check auth error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_get_me(self):
         """Get current user info"""
@@ -428,6 +517,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
     def handle_get_settings(self):
         """Get user settings"""
         try:
+            print("⚙️ Get settings requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -443,6 +533,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
 
             if not settings_doc:
+                print("⚙️ Creating default settings")
                 default_settings = UserSettings(user_data['user_id'])
                 user_settings_collection.insert_one(default_settings.to_dict())
                 settings_doc = user_settings_collection.find_one({'user_id': user_data['user_id']})
@@ -454,15 +545,18 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'notifications_enabled': settings_doc.get('notifications_enabled', True)
             }
 
+            print("✅ Settings retrieved")
             self._send_response(200, settings_response)
 
         except Exception as e:
             print(f"❌ Get settings error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_update_settings(self):
         """Update user settings"""
         try:
+            print("⚙️ Update settings requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -504,6 +598,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 upsert=True
             )
 
+            print("✅ Settings updated")
             self._send_response(200, {
                 'message': 'Settings updated successfully',
                 'settings': {
@@ -516,13 +611,15 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Update settings error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     # ==================== CATEGORY HANDLERS ====================
 
     def handle_create_category(self):
         """Create new category"""
         try:
+            print("📁 Create category requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -559,6 +656,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'created_at': category.created_at.isoformat()
             }
 
+            print("✅ Category created")
             self._send_response(201, {
                 'message': 'Category created successfully',
                 'category': category_response
@@ -566,11 +664,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Create category error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_get_categories(self):
         """Get all categories for current user (including default categories)"""
         try:
+            print("📁 Get categories requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -597,6 +697,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'created_at': cat['created_at'].isoformat()
                 })
 
+            print(f"✅ Retrieved {len(categories_response)} categories")
             self._send_response(200, {
                 'categories': categories_response,
                 'total': len(categories_response)
@@ -604,11 +705,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Get categories error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_update_category(self, path):
         """Update category"""
         try:
+            print("📁 Update category requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -660,6 +763,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 }
             )
 
+            print("✅ Category updated")
             self._send_response(200, {
                 'message': 'Category updated successfully',
                 'category': {
@@ -672,11 +776,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Update category error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_delete_category(self, path):
         """Delete category and all its flashcards"""
         try:
+            print("📁 Delete category requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -700,17 +806,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             flashcards_collection.delete_many({'category_id': category_id})
             categories_collection.delete_one({'_id': ObjectId(category_id)})
 
+            print("✅ Category deleted")
             self._send_response(200, {'message': 'Category deleted successfully'})
 
         except Exception as e:
             print(f"❌ Delete category error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     # ==================== FLASHCARD HANDLERS ====================
 
     def handle_generate_flashcard(self):
         """Generate complete flashcard using AI"""
         try:
+            print("🃏 Generate flashcard requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -740,10 +849,12 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             result = generate_complete_flashcard(word, english_level)
 
             if not result["success"]:
+                print(f"❌ AI generation failed: {result.get('error')}")
                 self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
                 return
 
             ai_data = result["data"]
+            print(f"✅ AI data received: {ai_data.get('text', word)}")
 
             flashcard = Flashcard(
                 user_data['user_id'],
@@ -762,6 +873,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             flashcard_dict['notes'] = ai_data.get('notes', '')
 
             db_result = flashcards_collection.insert_one(flashcard_dict)
+            print(f"✅ Flashcard saved to database: {db_result.inserted_id}")
 
             flashcard_response = {
                 '_id': str(db_result.inserted_id),
@@ -789,11 +901,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Generate flashcard error: {e}")
+            print(traceback.format_exc())
             self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_create_flashcard(self):
         """Create new flashcard (manual creation)"""
         try:
+            print("🃏 Create flashcard requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -855,6 +969,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'created_at': flashcard.created_at.isoformat()
             }
 
+            print("✅ Flashcard created")
             self._send_response(201, {
                 'message': 'Flashcard created successfully',
                 'flashcard': flashcard_response
@@ -862,11 +977,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Create flashcard error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_get_flashcards(self):
         """Get all flashcards for current user"""
         try:
+            print("🃏 Get flashcards requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -893,6 +1010,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'created_at': card['created_at'].isoformat()
                 })
 
+            print(f"✅ Retrieved {len(flashcards_response)} flashcards")
             self._send_response(200, {
                 'flashcards': flashcards_response,
                 'total': len(flashcards_response)
@@ -900,17 +1018,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Get flashcards error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_get_flashcards_by_category(self, path):
         """Get all flashcards in specific category"""
         try:
+            print("🃏 Get flashcards by category requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
                 return
 
             category_id = path.split('/')[3]
+            print(f"🃏 Category ID: {category_id}")
 
             category = categories_collection.find_one({'_id': ObjectId(category_id)})
 
@@ -923,6 +1044,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 return
 
             flashcards = list(flashcards_collection.find({'category_id': category_id}))
+            print(f"🃏 Found {len(flashcards)} flashcards")
 
             flashcards_response = []
             for card in flashcards:
@@ -944,6 +1066,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'created_at': card['created_at'].isoformat()
                 })
 
+            print("✅ Flashcards retrieved successfully")
             self._send_response(200, {
                 'flashcards': flashcards_response,
                 'total': len(flashcards_response)
@@ -951,11 +1074,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Get flashcards by category error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_get_flashcard(self, path):
         """Get single flashcard"""
         try:
+            print("🃏 Get single flashcard requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -989,15 +1114,18 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'created_at': flashcard['created_at'].isoformat()
             }
 
+            print("✅ Flashcard retrieved")
             self._send_response(200, flashcard_response)
 
         except Exception as e:
             print(f"❌ Get flashcard error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_update_flashcard(self, path):
         """Update flashcard"""
         try:
+            print("🃏 Update flashcard requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1043,6 +1171,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 }
             )
 
+            print("✅ Flashcard updated")
             self._send_response(200, {
                 'message': 'Flashcard updated successfully',
                 'flashcard': {
@@ -1057,11 +1186,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Update flashcard error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_delete_flashcard(self, path):
         """Delete flashcard"""
         try:
+            print("🃏 Delete flashcard requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1084,17 +1215,20 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             flashcards_collection.delete_one({'_id': ObjectId(flashcard_id)})
 
+            print("✅ Flashcard deleted")
             self._send_response(200, {'message': 'Flashcard deleted successfully'})
 
         except Exception as e:
             print(f"❌ Delete flashcard error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     # ==================== ADMIN HANDLERS ====================
 
     def handle_admin_create_user(self):
         """Admin: Create new user"""
         try:
+            print("👑 Admin create user requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -1137,6 +1271,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 'profile_picture': None
             }
 
+            print("✅ Admin created user")
             self._send_response(201, {
                 'message': 'User created successfully',
                 'user': user_response
@@ -1144,11 +1279,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Admin create user error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_admin_get_users(self):
         """Admin: Get all users"""
         try:
+            print("👑 Admin get users requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -1174,6 +1311,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                     'created_at': user['created_at'].isoformat()
                 })
 
+            print(f"✅ Retrieved {len(users_response)} users")
             self._send_response(200, {
                 'users': users_response,
                 'total': len(users_response)
@@ -1181,11 +1319,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Admin get users error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_admin_toggle_user_status(self, path):
         """Admin: Toggle user status"""
         try:
+            print("👑 Admin toggle user status requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -1216,6 +1356,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
                 {'$set': {'is_active': new_status, 'updated_at': datetime.utcnow()}}
             )
 
+            print("✅ User status toggled")
             self._send_response(200, {
                 'message': f"User {'activated' if new_status else 'deactivated'} successfully",
                 'is_active': new_status
@@ -1223,11 +1364,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ Admin toggle status error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_admin_delete_user(self, path):
         """Admin: Delete user"""
         try:
+            print("👑 Admin delete user requested")
             token = self._get_token_from_header()
 
             if not token:
@@ -1253,19 +1396,22 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
             users_collection.delete_one({'_id': ObjectId(user_id)})
 
+            print("✅ User deleted")
             self._send_response(200, {
                 'message': 'User deleted successfully'
             })
 
         except Exception as e:
             print(f"❌ Admin delete user error: {e}")
-            self._send_response(500, {'error': 'Server error'})
+            print(traceback.format_exc())
+            self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     # ==================== AI HANDLERS ====================
 
     def handle_ai_generate_examples(self):
         """Generate examples for a word using AI"""
         try:
+            print("🤖 AI generate examples requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1285,6 +1431,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             result = generate_examples(word, english_level)
 
             if not result["success"]:
+                print(f"❌ AI generation failed: {result.get('error')}")
                 self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
                 return
 
@@ -1296,11 +1443,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ AI generate examples error: {e}")
+            print(traceback.format_exc())
             self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_ai_regenerate_examples(self):
         """Regenerate examples with more variety"""
         try:
+            print("🤖 AI regenerate examples requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1320,6 +1469,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             result = regenerate_examples(word, english_level)
 
             if not result["success"]:
+                print(f"❌ AI generation failed: {result.get('error')}")
                 self._send_response(500, {'error': f'AI generation failed: {result.get("error", "Unknown error")}'})
                 return
 
@@ -1331,11 +1481,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ AI regenerate examples error: {e}")
+            print(traceback.format_exc())
             self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_ai_translate(self):
         """Translate English word to Ukrainian"""
         try:
+            print("🤖 AI translate requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1352,6 +1504,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             result = translate_to_ukrainian(text)
 
             if not result["success"]:
+                print(f"❌ Translation failed: {result.get('error')}")
                 self._send_response(500, {'error': f'Translation failed: {result.get("error", "Unknown error")}'})
                 return
 
@@ -1363,11 +1516,13 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ AI translate error: {e}")
+            print(traceback.format_exc())
             self._send_response(500, {'error': f'Server error: {str(e)}'})
 
     def handle_ai_translate_sentence(self):
         """Translate English sentence to Ukrainian"""
         try:
+            print("🤖 AI translate sentence requested")
             user_data = self._get_user_from_request()
             if not user_data:
                 self._send_response(401, {'error': 'Unauthorized'})
@@ -1384,6 +1539,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
             result = translate_sentence_to_ukrainian(text)
 
             if not result["success"]:
+                print(f"❌ Translation failed: {result.get('error')}")
                 self._send_response(500, {'error': f'Translation failed: {result.get("error", "Unknown error")}'})
                 return
 
@@ -1395,6 +1551,7 @@ class FlashEngHandler(BaseHTTPRequestHandler):
 
         except Exception as e:
             print(f"❌ AI translate sentence error: {e}")
+            print(traceback.format_exc())
             self._send_response(500, {'error': f'Server error: {str(e)}'})
 
 
@@ -1402,12 +1559,14 @@ def run_server():
     """Start multithreaded HTTP server"""
     port = int(os.getenv('PORT', 5001))
     environment = os.getenv('ENVIRONMENT', 'development')
+    frontend_url = os.getenv('FRONTEND_URL', 'not set')
 
     server_address = ('0.0.0.0', port)
     httpd = ThreadingHTTPServer(server_address, FlashEngHandler)
 
     print(f'✅ FlashEng Server starting...')
     print(f'🌍 Environment: {environment}')
+    print(f'🌐 Frontend URL: {frontend_url}')
     print(f'🚀 Server running on http://0.0.0.0:{port}')
     print(f'📊 Active threads: {threading.active_count()}')
 
