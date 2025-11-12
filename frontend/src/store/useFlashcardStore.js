@@ -63,10 +63,13 @@ export const useFlashcardStore = create((set, get) => ({
             });
 
             set({ currentFlashcard: res.data });
+            return res.data;
         } catch (error) {
             console.error("Error fetching flashcard:", error);
             const errorMessage = error.response?.data?.error || "Failed to load flashcard";
             toast.error(errorMessage);
+            set({ currentFlashcard: null });
+            return null;
         } finally {
             set({ isLoading: false });
         }
@@ -144,7 +147,11 @@ export const useFlashcardStore = create((set, get) => ({
             set((state) => ({
                 flashcards: state.flashcards.map((card) =>
                     card._id === flashcardId ? { ...card, ...res.data.flashcard } : card
-                )
+                ),
+                // Also update currentFlashcard if it's the same one
+                currentFlashcard: state.currentFlashcard?._id === flashcardId
+                    ? { ...state.currentFlashcard, ...res.data.flashcard }
+                    : state.currentFlashcard
             }));
 
             toast.success("Flashcard updated successfully!");
@@ -169,9 +176,12 @@ export const useFlashcardStore = create((set, get) => ({
                 }
             });
 
-            // Remove flashcard from list
+            // Remove flashcard from list and clear currentFlashcard if it's the deleted one
             set((state) => ({
-                flashcards: state.flashcards.filter((card) => card._id !== flashcardId)
+                flashcards: state.flashcards.filter((card) => card._id !== flashcardId),
+                currentFlashcard: state.currentFlashcard?._id === flashcardId
+                    ? null
+                    : state.currentFlashcard
             }));
 
             toast.success("Flashcard deleted successfully!");
@@ -187,5 +197,47 @@ export const useFlashcardStore = create((set, get) => ({
 
     clearCurrentFlashcard: () => {
         set({ currentFlashcard: null });
+    },
+
+    // Practice methods (для майбутніх вправ)
+    updatePracticeStats: async (flashcardId, wasCorrect) => {
+        try {
+            const token = localStorage.getItem('token');
+            await axiosInstance.patch(`/flashcards/${flashcardId}/practice`, {
+                was_correct: wasCorrect
+            }, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            // Update local stats
+            set((state) => ({
+                flashcards: state.flashcards.map((card) =>
+                    card._id === flashcardId
+                        ? {
+                            ...card,
+                            times_practiced: (card.times_practiced || 0) + 1,
+                            times_correct: wasCorrect
+                                ? (card.times_correct || 0) + 1
+                                : (card.times_correct || 0)
+                        }
+                        : card
+                ),
+                currentFlashcard: state.currentFlashcard?._id === flashcardId
+                    ? {
+                        ...state.currentFlashcard,
+                        times_practiced: (state.currentFlashcard.times_practiced || 0) + 1,
+                        times_correct: wasCorrect
+                            ? (state.currentFlashcard.times_correct || 0) + 1
+                            : (state.currentFlashcard.times_correct || 0)
+                    }
+                    : state.currentFlashcard
+            }));
+
+        } catch (error) {
+            console.error("Error updating practice stats:", error);
+            // Don't show toast error for this, it's background operation
+        }
     }
 }));

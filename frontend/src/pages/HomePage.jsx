@@ -11,8 +11,10 @@ import {
     X,
     Loader,
     Lock,
-    Sparkles
+    Sparkles,
+    Eye
 } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const HomePage = () => {
     const { authUser } = useAuthStore();
@@ -391,23 +393,34 @@ const HomePage = () => {
                                                     </p>
                                                 )}
                                             </div>
-                                            {!selectedCategory.is_default && (
-                                                <div className="flex space-x-2">
-                                                    <button
-                                                        onClick={() => openEditFlashcardModal(flashcard)}
-                                                        className="p-1 hover:bg-gray-100 rounded"
-                                                    >
-                                                        <Edit2 className="w-4 h-4 text-gray-600" />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteFlashcard(flashcard._id)}
-                                                        disabled={flashcardDeleting}
-                                                        className="p-1 hover:bg-red-50 rounded disabled:opacity-50"
-                                                    >
-                                                        <Trash2 className="w-4 h-4 text-red-600" />
-                                                    </button>
-                                                </div>
-                                            )}
+
+                                            <div className="flex space-x-2">
+                                                <Link
+                                                    to={`/flashcard/${flashcard._id}`}
+                                                    className="p-1 hover:bg-blue-50 rounded text-blue-600 hover:text-blue-700 transition-colors"
+                                                    title="View details"
+                                                >
+                                                    <Eye className="w-4 h-4" />
+                                                </Link>
+
+                                                {!selectedCategory.is_default && (
+                                                    <>
+                                                        <button
+                                                            onClick={() => openEditFlashcardModal(flashcard)}
+                                                            className="p-1 hover:bg-gray-100 rounded"
+                                                        >
+                                                            <Edit2 className="w-4 h-4 text-gray-600" />
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleDeleteFlashcard(flashcard._id)}
+                                                            disabled={flashcardDeleting}
+                                                            className="p-1 hover:bg-red-50 rounded disabled:opacity-50"
+                                                        >
+                                                            <Trash2 className="w-4 h-4 text-red-600" />
+                                                        </button>
+                                                    </>
+                                                )}
+                                            </div>
                                         </div>
 
                                         <div className="flex items-center justify-between text-sm text-gray-500">
